@@ -20,8 +20,7 @@ class _MyWidgetState extends State<MainPage> {
             (
               fontSize: 30,
               color:Colors.black,
-              fontFamily: 'Moulpali', 
-            
+              fontFamily: 'Moulpali',           
             ),
             
             ),

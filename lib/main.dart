@@ -25,8 +25,7 @@ void main() async {
 
   }
 
-  
-  
+    
   runApp( MyApp());
 }
 class MyApp extends StatelessWidget {
@@ -36,9 +35,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
     
-
       debugShowCheckedModeBanner: false,
-      initialRoute: RouteManger.registerpage,
+      initialRoute: RouteManger.homePage,
       onGenerateRoute: RouteManger.generateRoute,
     );
   }
