@@ -39,9 +39,9 @@ class AppDrawer extends StatelessWidget {
               context,
               icon: Icons.work_outline,
               label: 'JOBS',
-              onTap: () {
+              onTap: () => Navigator.pushNamed(context, RouteManger.jobs)
                 // Add your jobs page route
-              },
+              
             ),
 
             // LEARN
@@ -49,9 +49,9 @@ class AppDrawer extends StatelessWidget {
               context,
               icon: Icons.school_outlined,
               label: 'LEARN',
-              onTap: () {
+              onTap: () => Navigator.pushReplacementNamed(context, RouteManger.learninghub) 
                 // Add your learning page route
-              },
+             
             ),
 
             // PROFILE

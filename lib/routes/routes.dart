@@ -1,5 +1,10 @@
-import 'package:fixem/admin_pages/create_job.dart';
-import 'package:fixem/admin_pages/read_jobs.dart';
+import 'package:fixem/admin_pages/admin_courses/create_course_page.dart';
+import 'package:fixem/admin_pages/admin_courses/create_unit_page.dart';
+import 'package:fixem/admin_pages/admin_jobs/create_job.dart';
+import 'package:fixem/admin_pages/admin_jobs/read_jobs.dart';
+import 'package:fixem/course_pages/course_overview_page.dart';
+import 'package:fixem/course_pages/learning_hub_page.dart';
+
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/pages/edit_job.dart';
 import 'package:fixem/pages/job_description.dart';
@@ -21,6 +26,11 @@ class RouteManger {
   static const String createjob = '/CreateJob';
   static const String readjob = '/ReadJob';
   static const String editjob = '/EditJob';
+  static const String learninghub = '/Learninghub';
+  static const String quiz = '/Quiz';
+  static const String courseoverview = '/CourseOverview';
+  static const String createunit = '/CreateUnit';
+  static const String createcourse = '/CreateCourse';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -61,7 +71,24 @@ class RouteManger {
           builder: (context) => EditJobPage(jobId: jobId),
         );
 
-        
+      case learninghub:
+        return MaterialPageRoute(builder: (context) => LearningHubPage());
+
+      //case quiz:
+      //return MaterialPageRoute(builder: (context) => QuizPage());
+
+      case courseoverview:
+        final args = settings.arguments as Map<String, dynamic>;
+        final courseId = args['courseId'] as String;
+        return MaterialPageRoute(
+          builder: (context) => CourseOverviewPage(courseId: courseId),
+        );
+
+      case createunit:
+        return MaterialPageRoute(builder: (context) => const CreateUnitPage());
+
+      case createcourse:
+      return MaterialPageRoute(builder: (context) => const CreateCoursePage());
 
       default:
         throw FormatException('Route not found');

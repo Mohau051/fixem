@@ -38,33 +38,34 @@ class _LoginPageState extends State<LoginPage> {
   // Login function
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-    setState(() => _isLoading = true);
+      setState(() => _isLoading = true);
 
-    try {
-      final user = await _auth.loginUserWithEmailAndPassword(
-        _email.trim(),
-        _password.trim(),
-      );
-
-      setState(() => _isLoading = false);
-
-      if (user != null) {
-        final email = FirebaseAuth.instance.currentUser?.email;
-
-        if (email == 'adminfix@gmail.com') {
-          // Navigate to admin dashboard
-          Navigator.of(context).pushReplacementNamed(RouteManger.createjob);
-        } else {
-          // Navigate to create profile for regular users
-          Navigator.of(context).pushReplacementNamed(RouteManger.createProfile);
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login failed. Please try again.')),
+      try {
+        final user = await _auth.loginUserWithEmailAndPassword(
+          _email.trim(),
+          _password.trim(),
         );
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _isLoading = false);
+
+        setState(() => _isLoading = false);
+
+        if (user != null) {
+          final email = FirebaseAuth.instance.currentUser?.email;
+
+          if (email == 'adminfix@gmail.com') {
+            // Admin goes to admin dashboard
+            Navigator.of(context).pushReplacementNamed(RouteManger.createjob);
+          } else {
+            // ✅ Regular user goes directly to dashboard
+            // If they can log in, they exist in Authentication table
+            Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Login failed. Please try again.')),
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        setState(() => _isLoading = false);
 
         String errorMessage;
         switch (e.code) {
@@ -81,9 +82,9 @@ class _LoginPageState extends State<LoginPage> {
             errorMessage = 'Login failed. Please try again';
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
       } catch (_) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,9 +116,7 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(
                 width: 121,
                 height: 261,
-                child: Image(
-                  image: AssetImage('assets/Images/login.png'),
-                ),
+                child: Image(image: AssetImage('assets/Images/login.png')),
               ),
               const SizedBox(height: 20),
 
@@ -144,9 +143,11 @@ class _LoginPageState extends State<LoginPage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   suffixIcon: IconButton(
-                    icon: Icon(_isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off),
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
                     onPressed: () {
                       setState(() => _isPasswordVisible = !_isPasswordVisible);
                     },

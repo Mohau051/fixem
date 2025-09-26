@@ -51,7 +51,7 @@ class _CreatePageState extends State<CreatePage> {
         _provinceController.clear();
         _phoneController.clear();
 
-        Navigator.of(context).pushReplacementNamed(RouteManger.login);
+        Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to create profile: $e')),
