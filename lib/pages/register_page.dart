@@ -18,10 +18,12 @@ class _RegisterPageState extends State<RegisterPage> {
   String _email = '';
   String _password = '';
   String _confirmPassword = '';
+  String _userType = 'Job Seeker';
   bool _isLoading = false; //loading state
   bool _isPasswordVisible = false; //password visibility toggle
   bool _isConfirmPasswordVisible = false; //confirm password visibility toggle
 
+  final List<String> _userTypes = ['Job Seeker' ,'Employer'];
   // Email validator with regex
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) return 'Please enter an email';
@@ -57,8 +59,21 @@ class _RegisterPageState extends State<RegisterPage> {
 
         setState(() => _isLoading = false);
 
+
         if (user != null) {
-          Navigator.pushReplacementNamed(context, RouteManger.login);
+          switch (_userType) {
+            case 'Job Seeker':
+              Navigator.pushReplacementNamed(context, RouteManger.createProfile);
+              break;
+            case 'Employer':
+              Navigator.pushReplacementNamed(context, RouteManger.createjob);
+              break;
+            case 'Service Provider':
+              Navigator.pushReplacementNamed(context, RouteManger.dashboard); // Or specify a route for service providers
+              break;
+            default:
+              Navigator.pushReplacementNamed(context, RouteManger.login);
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Registration failed. Try again.')),
@@ -111,7 +126,36 @@ class _RegisterPageState extends State<RegisterPage> {
                   fontFamily: 'Moulpali',
                 ),
               ),
-              const SizedBox(height: 60),
+              const SizedBox(height: 40),
+                    // User type dropdown (LINE 120-142: Added dropdown for user type selection)
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  labelText: 'Register as',
+                ),
+                value: _userType,
+                items: _userTypes.map((String type) {
+                  return DropdownMenuItem<String>(
+                    value: type,
+                    child: Text(type),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _userType = newValue!;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select a user type';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              
 
               // Email input field
               TextFormField(

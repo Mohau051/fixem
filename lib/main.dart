@@ -31,7 +31,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
 
       debugShowCheckedModeBanner: false,
-      initialRoute: RouteManger.dashboard,
+      initialRoute: RouteManger.homePage,
       onGenerateRoute: RouteManger.generateRoute,
     );
   }
