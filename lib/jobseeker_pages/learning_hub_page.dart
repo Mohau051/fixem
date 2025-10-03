@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fixem/course_pages/course_overview_page.dart';
+import 'package:fixem/jobseeker_pages/course_overview_page.dart';
 import 'package:flutter/material.dart';
 
 class LearningHubPage extends StatelessWidget {
@@ -35,7 +35,8 @@ class LearningHubPage extends StatelessWidget {
             return ListView.builder(
               itemCount: courses.length,
               itemBuilder: (context, index) {
-                final courseData = courses[index].data() as Map<String, dynamic>;
+                final courseData =
+                    courses[index].data() as Map<String, dynamic>;
                 final courseId = courses[index].id;
                 final title = courseData['title'] ?? 'Untitled Course';
                 final description = courseData['description'] ?? '';
@@ -48,16 +49,15 @@ class LearningHubPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            )),
-                        const SizedBox(height: 2),
                         Text(
-                          description,
-                          style: const TextStyle(fontSize: 12),
+                          title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(description, style: const TextStyle(fontSize: 12)),
                         const SizedBox(height: 16),
                         Align(
                           alignment: Alignment.centerRight,
@@ -76,7 +76,7 @@ class LearningHubPage extends StatelessWidget {
                             ),
                             child: const Text("Start Course"),
                           ),
-                        )
+                        ),
                       ],
                     ),
                   ),

@@ -2,8 +2,8 @@ import 'package:fixem/admin_pages/admin_courses/create_course_page.dart';
 import 'package:fixem/admin_pages/admin_courses/create_unit_page.dart';
 import 'package:fixem/admin_pages/admin_jobs/create_job.dart';
 import 'package:fixem/admin_pages/admin_jobs/read_jobs.dart';
-import 'package:fixem/course_pages/course_overview_page.dart';
-import 'package:fixem/course_pages/learning_hub_page.dart';
+import 'package:fixem/jobseeker_pages/course_overview_page.dart';
+import 'package:fixem/jobseeker_pages/learning_hub_page.dart';
 
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/pages/edit_job.dart';
@@ -88,7 +88,9 @@ class RouteManger {
         return MaterialPageRoute(builder: (context) => const CreateUnitPage());
 
       case createcourse:
-      return MaterialPageRoute(builder: (context) => const CreateCoursePage());
+        return MaterialPageRoute(
+          builder: (context) => const CreateCoursePage(),
+        );
 
       default:
         throw FormatException('Route not found');

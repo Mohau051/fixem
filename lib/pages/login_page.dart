@@ -1,4 +1,6 @@
+import 'package:fixem/admin_pages/admin_courses/admindashboard.dart';
 import 'package:fixem/auth/auth_service.dart';
+import 'package:fixem/pages/createprofile_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fixem/routes/routes.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,18 +48,32 @@ class _LoginPageState extends State<LoginPage> {
           _password.trim(),
         );
 
-        setState(() => _isLoading = false);
-
         if (user != null) {
-          final email = FirebaseAuth.instance.currentUser?.email;
+          final email = user.email;
 
           if (email == 'adminfix@gmail.com') {
             // Admin goes to admin dashboard
-            Navigator.of(context).pushReplacementNamed(RouteManger.createjob);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminDashboard()),
+            );
           } else {
-            // ✅ Regular user goes directly to dashboard
-            // If they can log in, they exist in Authentication table
-            Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+            // Check if user profile exists using Auth UID
+            final profileExists = await _auth.checkProfileExists(user.uid);
+
+            if (profileExists) {
+              // Profile exists, go to dashboard
+              Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+            } else {
+              // No profile, go to create profile with email pre-filled
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      CreatePage(prefilledEmail: _email.trim()),
+                ),
+              );
+            }
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -65,8 +81,6 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       } on FirebaseAuthException catch (e) {
-        setState(() => _isLoading = false);
-
         String errorMessage;
         switch (e.code) {
           case 'user-not-found':
@@ -78,6 +92,12 @@ class _LoginPageState extends State<LoginPage> {
           case 'invalid-email':
             errorMessage = 'Invalid email address';
             break;
+          case 'user-disabled':
+            errorMessage = 'This account has been disabled';
+            break;
+          case 'too-many-requests':
+            errorMessage = 'Too many attempts. Try again later';
+            break;
           default:
             errorMessage = 'Login failed. Please try again';
         }
@@ -85,11 +105,12 @@ class _LoginPageState extends State<LoginPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(errorMessage)));
-      } catch (_) {
-        setState(() => _isLoading = false);
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Something went wrong. Try again.')),
         );
+      } finally {
+        setState(() => _isLoading = false);
       }
     }
   }
