@@ -1,9 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/admin_pages/admin_courses/admindashboard.dart';
 import 'package:fixem/auth/auth_service.dart';
+
+import 'package:fixem/employee_pages/employeedashboard.dart';
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fixem/routes/routes.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -13,7 +15,7 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _auth = AuthService();
+  final AuthService _auth = AuthService(); // Use the updated AuthService
   final _formKey = GlobalKey<FormState>();
 
   String _email = '';
@@ -37,7 +39,7 @@ class _LoginPageState extends State<LoginPage> {
     return null;
   }
 
-  // Login function
+  // Login function - UPDATED
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -51,6 +53,7 @@ class _LoginPageState extends State<LoginPage> {
         if (user != null) {
           final email = user.email;
 
+          // Check for admin
           if (email == 'adminfix@gmail.com') {
             // Admin goes to admin dashboard
             Navigator.pushReplacement(
@@ -58,12 +61,28 @@ class _LoginPageState extends State<LoginPage> {
               MaterialPageRoute(builder: (context) => const AdminDashboard()),
             );
           } else {
-            // Check if user profile exists using Auth UID
+            // Check if user profile exists using the updated AuthService
             final profileExists = await _auth.checkProfileExists(user.uid);
 
             if (profileExists) {
-              // Profile exists, go to dashboard
-              Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+              // Profile exists, check user role and navigate accordingly
+              final userProfile = await _auth.getUserProfile();
+              final userRole = userProfile?['role'] ?? 'job_seeker';
+
+              if (userRole == 'employee') {
+                // Employee goes to employee dashboard
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EmployeeDashboard(),
+                  ),
+                );
+              } else {
+                // Job seeker goes to job seeker dashboard
+                Navigator.of(
+                  context,
+                ).pushReplacementNamed(RouteManger.dashboard);
+              }
             } else {
               // No profile, go to create profile with email pre-filled
               Navigator.pushReplacement(
@@ -106,9 +125,9 @@ class _LoginPageState extends State<LoginPage> {
           context,
         ).showSnackBar(SnackBar(content: Text(errorMessage)));
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Try again.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Something went wrong: $e')));
       } finally {
         setState(() => _isLoading = false);
       }
@@ -148,6 +167,7 @@ class _LoginPageState extends State<LoginPage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelText: 'Enter your Email',
+                  prefixIcon: const Icon(Icons.email),
                 ),
                 keyboardType: TextInputType.emailAddress,
                 validator: _validateEmail,
@@ -163,11 +183,13 @@ class _LoginPageState extends State<LoginPage> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
+                  prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _isPasswordVisible
                           ? Icons.visibility
                           : Icons.visibility_off,
+                      color: Colors.grey,
                     ),
                     onPressed: () {
                       setState(() => _isPasswordVisible = !_isPasswordVisible);
@@ -178,6 +200,26 @@ class _LoginPageState extends State<LoginPage> {
                 onChanged: (value) => _password = value,
               ),
               const SizedBox(height: 30),
+
+              // Forgot Password?
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    // Implement forgot password functionality
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Forgot password feature coming soon!'),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Forgot Password?',
+                    style: TextStyle(color: Colors.lightBlueAccent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
 
               // Button / Loader
               _isLoading
@@ -190,10 +232,39 @@ class _LoginPageState extends State<LoginPage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
+                        elevation: 2,
                       ),
-                      child: const Text('LOGIN'),
                       onPressed: _login,
+                      child: const Text(
+                        'LOGIN',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
+
+              const SizedBox(height: 20),
+
+              // Sign up option
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("Don't have an account?"),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pushNamed(RouteManger.registerpage);
+                    },
+                    child: const Text(
+                      'Sign Up',
+                      style: TextStyle(
+                        color: Colors.lightBlueAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

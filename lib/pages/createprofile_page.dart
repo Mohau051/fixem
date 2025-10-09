@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 
 class CreatePage extends StatefulWidget {
   final String? prefilledEmail;
+  final String? prefilledRole; // Add this parameter
 
-  const CreatePage({super.key, this.prefilledEmail});
+  const CreatePage({super.key, this.prefilledEmail, this.prefilledRole});
 
   @override
   State<CreatePage> createState() => _CreatePageState();
@@ -27,6 +28,8 @@ class _CreatePageState extends State<CreatePage> {
 
   String? _selectedGender;
   String? _selectedProvince;
+  String?
+  _selectedRole; // This will be set from prefilledRole and cannot be changed
   bool _isLoading = false;
 
   @override
@@ -35,6 +38,20 @@ class _CreatePageState extends State<CreatePage> {
     // Prefill email if provided
     if (widget.prefilledEmail != null) {
       _emailController.text = widget.prefilledEmail!;
+    } else {
+      // Also try to get email from current user
+      final currentUser = _auth.currentUser;
+      if (currentUser?.email != null) {
+        _emailController.text = currentUser!.email!;
+      }
+    }
+
+    // Prefill role if provided from registration - THIS CANNOT BE CHANGED
+    if (widget.prefilledRole != null) {
+      _selectedRole = widget.prefilledRole;
+    } else {
+      // Default to job_seeker if no role provided (for users coming from login)
+      _selectedRole = 'job_seeker';
     }
   }
 
@@ -55,40 +72,31 @@ class _CreatePageState extends State<CreatePage> {
           return;
         }
 
-        // Verify the email matches the authenticated user
-        if (_emailController.text.trim() != user.email) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Email does not match authenticated user.'),
-            ),
-          );
-          return;
-        }
+        // Get the email from the authenticated user instead of the controller
+        final authenticatedEmail = user.email;
 
-        // Create user profile with the same UID from Authentication
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid) // Use the exact same UID from Firebase Auth
-            .set({
-              'email': _emailController.text.trim(),
-              'name': _nameController.text.trim(),
-              'surname': _surnameController.text.trim(),
-              'age': _ageController.text.trim(),
-              'gender': _selectedGender ?? _genderController.text.trim(),
-              'province': _selectedProvince ?? _provinceController.text.trim(),
-              'phone': _phoneController.text.trim(),
-              'userId': user.uid, // Store UID as a field for easy querying
-              'authProvider': 'email_password', // Track auth method
-              'createdAt': Timestamp.now(),
-              'updatedAt': Timestamp.now(),
-            });
+        // Use the authenticated email for the profile
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'email': authenticatedEmail, // Use the authenticated email
+          'name': _nameController.text.trim(),
+          'surname': _surnameController.text.trim(),
+          'age': _ageController.text.trim(),
+          'gender': _selectedGender ?? _genderController.text.trim(),
+          'province': _selectedProvince ?? _provinceController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'role': _selectedRole, // Store the selected role (cannot be changed)
+          'userId': user.uid,
+          'authProvider': 'email_password',
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile created successfully!')),
         );
 
-        // Navigate to dashboard
-        Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+        // Navigate based on role
+        _navigateBasedOnRole();
       } on FirebaseException catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Firestore error: ${e.message}')),
@@ -100,6 +108,64 @@ class _CreatePageState extends State<CreatePage> {
       } finally {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  void _navigateBasedOnRole() {
+    switch (_selectedRole) {
+      case 'employee':
+        Navigator.of(
+          context,
+        ).pushReplacementNamed(RouteManger.employeeDashboard);
+        break;
+      case 'job_seeker':
+      default:
+        Navigator.of(context).pushReplacementNamed(RouteManger.dashboard);
+        break;
+    }
+  }
+
+  // Helper method to get display name for role
+  String _getRoleDisplayName() {
+    switch (_selectedRole) {
+      case 'employee':
+        return 'Employer';
+      case 'job_seeker':
+      default:
+        return 'Job Seeker';
+    }
+  }
+
+  // Helper method to get role description
+  String _getRoleDescription() {
+    switch (_selectedRole) {
+      case 'employee':
+        return 'As an Employer, you will be able to post jobs and manage applications.';
+      case 'job_seeker':
+      default:
+        return 'As a Job Seeker, you will be able to browse jobs and take courses.';
+    }
+  }
+
+  // Helper method to get role icon
+  IconData _getRoleIcon() {
+    switch (_selectedRole) {
+      case 'employee':
+        return Icons.business_center;
+      case 'job_seeker':
+      default:
+        return Icons.person;
+    }
+  }
+
+  // Helper method to get role color
+  Color _getRoleColor() {
+    switch (_selectedRole) {
+      case 'employee':
+        return Colors.orange;
+      case 'job_seeker':
+      default:
+        return Colors.lightBlueAccent;
     }
   }
 
@@ -120,7 +186,7 @@ class _CreatePageState extends State<CreatePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Profile'),
-        backgroundColor: Colors.lightBlueAccent,
+        backgroundColor: _getRoleColor(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -147,13 +213,77 @@ class _CreatePageState extends State<CreatePage> {
               ),
               const SizedBox(height: 40),
 
+              // Role Display (NOT editable) - FIRST and LOCKED
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _getRoleColor().withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _getRoleColor().withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: _getRoleColor().withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        _getRoleIcon(),
+                        color: _getRoleColor(),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Account Type: ${_getRoleDisplayName()}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _getRoleColor(),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _getRoleDescription(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.lock, color: Colors.grey, size: 16),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'This account type cannot be changed. If you need a different account type, please register again with the correct selection.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+
               // Email (read-only, from authentication)
               TextFormField(
                 controller: _emailController,
                 decoration: _inputDecoration('Email Address'),
-
+                readOnly: true, // Make it read-only so user can't change it
                 style: TextStyle(
-                  color: Colors.grey[600], // Visual indication it's locked
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
                 ),
                 validator: (value) =>
                     value!.isEmpty ? 'Email is required' : null,
@@ -204,7 +334,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
               const SizedBox(height: 20),
 
-              // Gender - Dropdown (Improved)
+              // Gender - Dropdown
               DropdownButtonFormField<String>(
                 decoration: _inputDecoration('Gender'),
                 value: _selectedGender,
@@ -227,7 +357,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
               const SizedBox(height: 20),
 
-              // Province - Dropdown (Improved)
+              // Province - Dropdown
               DropdownButtonFormField<String>(
                 decoration: _inputDecoration('Province'),
                 value: _selectedProvince,
@@ -293,7 +423,7 @@ class _CreatePageState extends State<CreatePage> {
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.lightBlueAccent,
+                        backgroundColor: _getRoleColor(),
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 60),
                         shape: RoundedRectangleBorder(
@@ -301,9 +431,9 @@ class _CreatePageState extends State<CreatePage> {
                         ),
                       ),
                       onPressed: _createProfile,
-                      child: const Text(
-                        'CREATE PROFILE',
-                        style: TextStyle(
+                      child: Text(
+                        'CREATE ${_getRoleDisplayName().toUpperCase()} PROFILE',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
@@ -328,11 +458,11 @@ class _CreatePageState extends State<CreatePage> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Colors.lightBlueAccent),
+        borderSide: BorderSide(color: _getRoleColor()),
       ),
       labelText: label,
       labelStyle: const TextStyle(color: Colors.grey),
-      floatingLabelStyle: const TextStyle(color: Colors.lightBlueAccent),
+      floatingLabelStyle: TextStyle(color: _getRoleColor()),
     );
   }
 }

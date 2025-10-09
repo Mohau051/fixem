@@ -8,10 +8,7 @@ class ReadJobsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Catalog'),
-        backgroundColor: Colors.lightBlueAccent,
-      ),
+      // REMOVED AppBar from here since it's already in the dashboard
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: StreamBuilder<QuerySnapshot>(

@@ -38,6 +38,9 @@ dependencies:
   path: ^1.9.0
   file_picker: ^5.5.0
   firebase_storage: ^12.4.7
+  path_provider: ^2.1.1
+  permission_handler: ^11.0.1
+  open_file: ^3.3.1
   
   
   

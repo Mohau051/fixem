@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/auth/auth_service.dart';
+import 'package:fixem/pages/createprofile_page.dart';
 import 'package:flutter/material.dart';
-import 'package:fixem/routes/routes.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -14,17 +14,16 @@ class _RegisterPageState extends State<RegisterPage> {
   final _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
 
-  // Added state variables for form field values and logic control
   String _email = '';
   String _password = '';
   String _confirmPassword = '';
   String _userType = 'Job Seeker';
-  bool _isLoading = false; //loading state
-  bool _isPasswordVisible = false; //password visibility toggle
-  bool _isConfirmPasswordVisible = false; //confirm password visibility toggle
+  bool _isLoading = false;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
-  final List<String> _userTypes = ['Job Seeker' ,'Employer'];
-  // Email validator with regex
+  final List<String> _userTypes = ['Job Seeker', 'Employer'];
+
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) return 'Please enter an email';
     if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
@@ -33,20 +32,27 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
-  // Password strength validation
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a password';
     if (value.length < 8) return 'Password must be at least 8 characters';
     return null;
   }
 
-  // Password match validation
   String? _validateConfirmPassword(String? value) {
     if (value != _password) return 'Passwords do not match';
     return null;
   }
 
-  // User registration logic with loading indicator and error handling
+  String _getDatabaseRole(String userType) {
+    switch (userType) {
+      case 'Employer':
+        return 'employee';
+      case 'Job Seeker':
+      default:
+        return 'job_seeker';
+    }
+  }
+
   Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -57,22 +63,39 @@ class _RegisterPageState extends State<RegisterPage> {
           _password.trim(),
         );
 
-        setState(() => _isLoading = false);
-
-
         if (user != null) {
-          switch (_userType) {
-            case 'Job Seeker':
-              Navigator.pushReplacementNamed(context, RouteManger.createProfile);
-              break;
-            case 'Employer':
-              Navigator.pushReplacementNamed(context, RouteManger.createjob);
-              break;
-            case 'Service Provider':
-              Navigator.pushReplacementNamed(context, RouteManger.dashboard); // Or specify a route for service providers
-              break;
-            default:
-              Navigator.pushReplacementNamed(context, RouteManger.login);
+          final databaseRole = _getDatabaseRole(_userType);
+
+          // Wait a moment for Firebase to fully initialize the user
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // Get the current user again to ensure we have the latest data
+          final currentUser = FirebaseAuth.instance.currentUser;
+
+          if (currentUser != null) {
+            // Use the email from the authenticated user to avoid mismatch
+            final authenticatedEmail = currentUser.email ?? _email.trim();
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CreatePage(
+                  prefilledEmail: authenticatedEmail,
+                  prefilledRole: databaseRole,
+                ),
+              ),
+            );
+          } else {
+            // Fallback: use the form email if currentUser is null
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CreatePage(
+                  prefilledEmail: _email.trim(),
+                  prefilledRole: databaseRole,
+                ),
+              ),
+            );
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -80,7 +103,6 @@ class _RegisterPageState extends State<RegisterPage> {
           );
         }
       } on FirebaseAuthException catch (e) {
-        setState(() => _isLoading = false);
         String errorMessage;
         switch (e.code) {
           case 'email-already-in-use':
@@ -96,14 +118,15 @@ class _RegisterPageState extends State<RegisterPage> {
             errorMessage = 'Registration failed. Please try again';
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
-      } catch (_) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
+      } catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Something went wrong: $e')));
+      } finally {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Try again')),
-        );
       }
     }
   }
@@ -126,20 +149,37 @@ class _RegisterPageState extends State<RegisterPage> {
                   fontFamily: 'Moulpali',
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(
+                'Register as ${_userType.toLowerCase()}',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
               const SizedBox(height: 40),
-                    // User type dropdown (LINE 120-142: Added dropdown for user type selection)
+
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelText: 'Register as',
+                  prefixIcon: const Icon(Icons.person_outline),
                 ),
                 value: _userType,
                 items: _userTypes.map((String type) {
                   return DropdownMenuItem<String>(
                     value: type,
-                    child: Text(type),
+                    child: Row(
+                      children: [
+                        Icon(
+                          type == 'Employer'
+                              ? Icons.business_center
+                              : Icons.person,
+                          color: Colors.lightBlueAccent,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(type),
+                      ],
+                    ),
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
@@ -155,15 +195,55 @@ class _RegisterPageState extends State<RegisterPage> {
                 },
               ),
               const SizedBox(height: 20),
-              
 
-              // Email input field
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _userType == 'Employer'
+                      ? Colors.orange.withOpacity(0.1)
+                      : Colors.lightBlueAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _userType == 'Employer'
+                        ? Colors.orange.withOpacity(0.3)
+                        : Colors.lightBlueAccent.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _userType == 'Employer'
+                          ? Icons.business_center
+                          : Icons.work,
+                      color: _userType == 'Employer'
+                          ? Colors.orange
+                          : Colors.lightBlueAccent,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _userType == 'Employer'
+                            ? 'You will be able to post jobs and hire talent'
+                            : 'You will be able to browse jobs and take courses',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
               TextFormField(
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelText: 'Enter your email',
+                  prefixIcon: const Icon(Icons.email),
                 ),
                 keyboardType: TextInputType.emailAddress,
                 validator: _validateEmail,
@@ -171,18 +251,19 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(height: 20),
 
-              // Password input 
               TextFormField(
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelText: 'Enter your password',
+                  prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _isPasswordVisible
                           ? Icons.visibility
                           : Icons.visibility_off,
+                      color: Colors.grey,
                     ),
                     onPressed: () {
                       setState(() => _isPasswordVisible = !_isPasswordVisible);
@@ -195,21 +276,25 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(height: 20),
 
-              // Confirm password 
               TextFormField(
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelText: 'Confirm password',
+                  prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _isConfirmPasswordVisible
                           ? Icons.visibility
                           : Icons.visibility_off,
+                      color: Colors.grey,
                     ),
                     onPressed: () {
-                      setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible);
+                      setState(
+                        () => _isConfirmPasswordVisible =
+                            !_isConfirmPasswordVisible,
+                      );
                     },
                   ),
                 ),
@@ -219,26 +304,39 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(height: 40),
 
-              // Register button or loading indicator
               _isLoading
                   ? const CircularProgressIndicator()
                   : ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.lightBlueAccent,
+                        backgroundColor: _userType == 'Employer'
+                            ? Colors.orange
+                            : Colors.lightBlueAccent,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(300, 60),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
+                        elevation: 2,
                       ),
                       onPressed: _register,
-                      child: const Text('Register'),
+                      child: Text(
+                        'REGISTER AS $_userType'.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
 
-              // Login navigation link
+              const SizedBox(height: 20),
+
               TextButton(
-                onPressed: () => Navigator.of(context).pushNamed(RouteManger.login),
-                child: const Text('Already have an account? Login'),
+                onPressed: () =>
+                    Navigator.of(context).pushReplacementNamed('/login'),
+                child: const Text(
+                  'Already have an account? Login',
+                  style: TextStyle(color: Colors.lightBlueAccent),
+                ),
               ),
             ],
           ),

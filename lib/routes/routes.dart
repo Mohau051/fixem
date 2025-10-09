@@ -1,10 +1,10 @@
 import 'package:fixem/admin_pages/admin_courses/create_course_page.dart';
 import 'package:fixem/admin_pages/admin_courses/create_unit_page.dart';
-import 'package:fixem/admin_pages/admin_jobs/create_job.dart';
-import 'package:fixem/admin_pages/admin_jobs/read_jobs.dart';
+import 'package:fixem/employee_pages/create_job.dart';
+import 'package:fixem/employee_pages/employeedashboard.dart';
+import 'package:fixem/employee_pages/read_jobs.dart';
 import 'package:fixem/jobseeker_pages/course_overview_page.dart';
 import 'package:fixem/jobseeker_pages/learning_hub_page.dart';
-
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/pages/edit_job.dart';
 import 'package:fixem/pages/job_description.dart';
@@ -21,6 +21,8 @@ class RouteManger {
   static const String login = '/login';
   static const String createProfile = '/CreateProfile';
   static const String dashboard = '/Dashboard';
+  static const String employeeDashboard =
+      '/EmployeeDashboard'; // Add this route
   static const String jobs = '/Jobs';
   static const String jobDescription = '/JobDescription';
   static const String createjob = '/CreateJob';
@@ -44,10 +46,21 @@ class RouteManger {
         return MaterialPageRoute(builder: (context) => LoginPage());
 
       case createProfile:
-        return MaterialPageRoute(builder: (context) => CreatePage());
+        final args = settings.arguments as Map<String, dynamic>?;
+        final prefilledEmail = args?['prefilledEmail'] as String?;
+        final prefilledRole = args?['prefilledRole'] as String?;
+        return MaterialPageRoute(
+          builder: (context) => CreatePage(
+            prefilledEmail: prefilledEmail,
+            prefilledRole: prefilledRole,
+          ),
+        );
 
       case dashboard:
         return MaterialPageRoute(builder: (context) => DashboardPage());
+
+      case employeeDashboard: // Add this case
+        return MaterialPageRoute(builder: (context) => EmployeeDashboard());
 
       case jobs:
         return MaterialPageRoute(builder: (context) => JobsPage());
