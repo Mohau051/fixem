@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/Models/drawer.dart';
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/auth/auth_service.dart';
+import 'package:fixem/pages/job_description.dart';
 import 'package:flutter/material.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -67,6 +68,10 @@ class _DashboardPageState extends State<DashboardPage> {
             'location': data['location'] ?? 'Location not specified',
             'requiredBadge': data['skills'] ?? 'No specific badge required',
             'salary': data['salary'] ?? 'Not specified',
+            'description': data['description'] ?? 'No description available',
+            'closingDate': data['closingdate'] ?? 'Not specified',
+            'employerId': data['employerId'] ?? '',
+            'company': data['company'] ?? 'Not specified',
           };
         }).toList();
       });
@@ -96,20 +101,42 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(job['location']),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Required skills: ${job['requiredBadge']}',
-                    style: const TextStyle(fontSize: 12),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 14, color: Colors.grey),
+                      SizedBox(width: 4),
+                      Text(job['location']),
+                    ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Salary: ${job['salary']}',
-                    style: const TextStyle(fontSize: 12, color: Colors.green),
+                  Row(
+                    children: [
+                      Icon(Icons.work, size: 14, color: Colors.grey),
+                      SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Skills: ${job['requiredBadge']}',
+                          style: TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.attach_money, size: 14, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text(
+                        'Salary: ${job['salary']}',
+                        style: TextStyle(fontSize: 12, color: Colors.green),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+            SizedBox(width: 8),
             ElevatedButton(
               onPressed: () {
                 _viewJobDetails(job['id']);
@@ -134,9 +161,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _viewJobDetails(String jobId) {
-    ScaffoldMessenger.of(
+    // Navigate to your existing JobDescriptionPage
+    Navigator.push(
       context,
-    ).showSnackBar(SnackBar(content: Text('Viewing job: $jobId')));
+      MaterialPageRoute(builder: (context) => JobDescriptionPage(jobId: jobId)),
+    );
   }
 
   @override
@@ -151,7 +180,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
       ),
-      drawer: AppDrawer(), // Remove const to allow dynamic behavior
+      drawer: AppDrawer(),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

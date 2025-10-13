@@ -17,14 +17,16 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
 
   bool _isLoading = false;
   bool _hasApplied = false;
+  bool _applicationSubmitted = false; // New flag to track submission state
   Map<String, dynamic>? _userProfile;
+  Map<String, dynamic>? _applicationData;
   final TextEditingController _coverLetterController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
-    _checkIfApplied();
+    _checkApplicationStatus();
   }
 
   Future<void> _loadUserProfile() async {
@@ -43,7 +45,7 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
     }
   }
 
-  Future<void> _checkIfApplied() async {
+  Future<void> _checkApplicationStatus() async {
     try {
       final user = _auth.currentUser;
       if (user != null) {
@@ -53,9 +55,19 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
             .where('applicantId', isEqualTo: user.uid)
             .get();
 
-        setState(() {
-          _hasApplied = applicationSnapshot.docs.isNotEmpty;
-        });
+        if (applicationSnapshot.docs.isNotEmpty) {
+          final applicationDoc = applicationSnapshot.docs.first;
+          setState(() {
+            _hasApplied = true;
+            _applicationData = applicationDoc.data();
+            _applicationData!['id'] = applicationDoc.id;
+          });
+        } else {
+          setState(() {
+            _hasApplied = false;
+            _applicationData = null;
+          });
+        }
       }
     } catch (e) {
       print('Error checking application status: $e');
@@ -113,11 +125,22 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
         'updatedAt': Timestamp.now(),
       });
 
-      setState(() => _hasApplied = true);
+      // Refresh application status
+      await _checkApplicationStatus();
+
+      // Set the flag to show close button
+      setState(() {
+        _applicationSubmitted = true;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Application submitted successfully!')),
       );
+
+      // Close the dialog automatically after successful submission
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -167,17 +190,129 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
             onPressed: () => Navigator.pop(context),
             child: const Text('CANCEL'),
           ),
-          ElevatedButton(
-            onPressed: _applyForJob,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.lightBlueAccent,
-              foregroundColor: Colors.white,
+          _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+                  onPressed: _applicationSubmitted
+                      ? () =>
+                            Navigator.pop(
+                              context,
+                            ) // Close dialog when already submitted
+                      : _applyForJob, // Submit application when not submitted
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.lightBlueAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    _applicationSubmitted ? 'CLOSE' : 'SUBMIT APPLICATION',
+                  ),
+                ),
+        ],
+      ),
+    ).then((_) {
+      // Reset the submission flag when dialog is closed
+      setState(() {
+        _applicationSubmitted = false;
+      });
+    });
+  }
+
+  Widget _buildApplicationStatus(Map<String, dynamic> jobData) {
+    if (!_hasApplied || _applicationData == null) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () => _showApplyDialog(jobData),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.lightBlueAccent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text('SUBMIT APPLICATION'),
           ),
+          child: const Text(
+            'APPLY NOW',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
+    }
+
+    final status = _applicationData!['status'] ?? 'pending';
+    final appliedDate = _applicationData!['appliedAt'] as Timestamp?;
+    final updatedDate = _applicationData!['updatedAt'] as Timestamp?;
+
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    String statusMessage;
+
+    switch (status.toLowerCase()) {
+      case 'approved':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Application Approved!';
+        statusMessage = 'Congratulations! Your application has been approved.';
+        break;
+      case 'rejected':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        statusText = 'Application Rejected';
+        statusMessage = 'Your application was not successful this time.';
+        break;
+      default:
+        statusColor = Colors.orange;
+        statusIcon = Icons.pending;
+        statusText = 'Application Pending';
+        statusMessage = 'Your application is under review by the employer.';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor),
+      ),
+      child: Column(
+        children: [
+          Icon(statusIcon, color: statusColor, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: statusColor,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            statusMessage,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: statusColor.withOpacity(0.8)),
+          ),
+          const SizedBox(height: 12),
+          if (appliedDate != null)
+            Text(
+              'Applied on: ${_formatDate(appliedDate)}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          if (updatedDate != null && status != 'pending')
+            Text(
+              'Updated on: ${_formatDate(updatedDate)}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
         ],
       ),
     );
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   @override
@@ -274,61 +409,10 @@ class _JobDescriptionPageState extends State<JobDescriptionPage> {
                 Text(closingDate, style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 30),
 
-                // Apply Button
-                if (_hasApplied)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green),
-                    ),
-                    child: const Column(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green, size: 40),
-                        SizedBox(height: 8),
-                        Text(
-                          'Application Submitted!',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Your application has been sent to the employer.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  SizedBox(
-                    width: double.infinity,
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            onPressed: () => _showApplyDialog(jobData),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlueAccent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'APPLY NOW',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                  ),
+                // Application Status/Apply Button
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildApplicationStatus(jobData),
               ],
             ),
           );
