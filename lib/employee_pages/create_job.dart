@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/routes/routes.dart';
 import 'package:flutter/material.dart';
 
@@ -18,6 +19,7 @@ class _CreateJobPageState extends State<CreateJobPage> {
   final TextEditingController _closingdate = TextEditingController();
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _isLoading = false;
 
@@ -30,6 +32,27 @@ class _CreateJobPageState extends State<CreateJobPage> {
     });
 
     try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to create a job'),
+          ),
+        );
+        return;
+      }
+
+      // Get employer profile data
+      final employerDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      final employerData = employerDoc.data();
+      final employerName = employerData != null
+          ? '${employerData['name']} ${employerData['surname']}'
+          : 'Unknown Employer';
+
       await FirebaseFirestore.instance.collection('jobs').add({
         'title': _titleController.text.trim(),
         'location': _locationController.text.trim(),
@@ -37,8 +60,16 @@ class _CreateJobPageState extends State<CreateJobPage> {
         'description': _descriptionController.text.trim(),
         'salary': _salaryController.text.trim(),
         'closingdate': _closingdate.text.trim(),
+        'employerId': currentUser.uid, // CRITICAL: Add employer ID
+        'employerName': employerName, // Add employer name for display
         'createdAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
       });
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job created successfully!')),
+      );
 
       // Navigate to JobsPage after successful creation
       Navigator.pushReplacementNamed(context, RouteManger.readjob);
@@ -56,17 +87,18 @@ class _CreateJobPageState extends State<CreateJobPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      
+      appBar: AppBar(
+        title: const Text('Create Job'),
+        backgroundColor: Colors.lightBlueAccent,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-
         child: Form(
           key: _formKey,
-
           child: ListView(
             children: [
               const SizedBox(height: 20),
-              Text(
+              const Text(
                 'Create Job',
                 style: TextStyle(
                   fontSize: 30,
@@ -74,95 +106,165 @@ class _CreateJobPageState extends State<CreateJobPage> {
                   fontFamily: 'Moulpali',
                 ),
               ),
+              const SizedBox(height: 20),
+              const Text(
+                'Fill in the details below to post a new job opportunity',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 30),
 
+              // Job Title
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
                   labelText: 'Job Title',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.work_outline),
                 ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter job title' : null,
               ),
               const SizedBox(height: 16),
+
+              // Location
               TextFormField(
                 controller: _locationController,
                 decoration: const InputDecoration(
                   labelText: 'Location',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.location_on_outlined),
                 ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter location' : null,
               ),
               const SizedBox(height: 16),
+
+              // Required Skills
               TextFormField(
                 controller: _skillsController,
                 decoration: const InputDecoration(
                   labelText: 'Required Skills',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.psychology_outlined),
+                  hintText: 'e.g., JavaScript, Python, Project Management',
                 ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter skills' : null,
               ),
               const SizedBox(height: 16),
 
+              // Salary
               TextFormField(
                 controller: _salaryController,
                 decoration: const InputDecoration(
                   labelText: 'Salary',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.attach_money_outlined),
+                  hintText: 'e.g., R15,000 - R20,000 per month',
                 ),
                 validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter Price' : null,
+                    value == null || value.isEmpty ? 'Enter salary' : null,
               ),
               const SizedBox(height: 16),
+
+              // Closing Date
               TextFormField(
                 controller: _closingdate,
                 decoration: const InputDecoration(
                   labelText: 'Closing Date',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today_outlined),
+                  hintText: 'e.g., 15 December 2024',
                 ),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter Date' : null,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Enter closing date'
+                    : null,
               ),
               const SizedBox(height: 16),
+
+              // Job Description
               TextFormField(
                 controller: _descriptionController,
-                maxLines: 4,
+                maxLines: 5,
                 decoration: const InputDecoration(
                   labelText: 'Job Description',
                   border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                  hintText:
+                      'Describe the job responsibilities, requirements, and what you\'re looking for in a candidate...',
                 ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter description' : null,
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 30),
 
               // Submit Button
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : SizedBox(
                       width: double.infinity,
+                      height: 56,
                       child: ElevatedButton(
                         onPressed: _submitJob,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.lightBlueAccent,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
                         ),
                         child: const Text(
-                          'SAVE JOB',
+                          'PUBLISH JOB',
                           style: TextStyle(
-                            color: Colors.white,
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
+
+              const SizedBox(height: 16),
+
+              // Cancel Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: const BorderSide(color: Colors.grey),
+                  ),
+                  child: const Text(
+                    'CANCEL',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _locationController.dispose();
+    _skillsController.dispose();
+    _descriptionController.dispose();
+    _salaryController.dispose();
+    _closingdate.dispose();
+    super.dispose();
   }
 }

@@ -1,16 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:fixem/routes/routes.dart';
+import 'package:fixem/auth/auth_service.dart';
+import 'package:fixem/pages/createprofile_page.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
+  // Function to handle profile navigation
+  Future<void> _navigateToProfile(BuildContext context) async {
+    try {
+      final AuthService auth = AuthService();
+      final userProfile = await auth.getUserProfile();
+
+      if (userProfile != null && userProfile['name'] != null) {
+        // User has a profile, navigate to profile view page
+        Navigator.pushReplacementNamed(context, RouteManger.profile);
+      } else {
+        // User doesn't have a profile, navigate to create profile
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                CreatePage(prefilledEmail: auth.currentUser?.email),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error checking profile: $e');
+      // Fallback: navigate to create profile
+      Navigator.pushReplacementNamed(context, RouteManger.createProfile);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.lightBlue, // Soft blue background        
+          color: Colors.lightBlue, // Soft blue background
         ),
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
@@ -31,7 +58,10 @@ class AppDrawer extends StatelessWidget {
               context,
               icon: Icons.home,
               label: 'HOME',
-              onTap: () => Navigator.pushReplacementNamed(context, RouteManger.dashboard),
+              onTap: () => Navigator.pushReplacementNamed(
+                context,
+                RouteManger.dashboard,
+              ),
             ),
 
             // JOBS
@@ -39,9 +69,7 @@ class AppDrawer extends StatelessWidget {
               context,
               icon: Icons.work_outline,
               label: 'JOBS',
-              onTap: () => Navigator.pushNamed(context, RouteManger.jobs)
-                // Add your jobs page route
-              
+              onTap: () => Navigator.pushNamed(context, RouteManger.jobs),
             ),
 
             // LEARN
@@ -49,17 +77,18 @@ class AppDrawer extends StatelessWidget {
               context,
               icon: Icons.school_outlined,
               label: 'LEARN',
-              onTap: () => Navigator.pushReplacementNamed(context, RouteManger.learninghub) 
-                // Add your learning page route
-             
+              onTap: () => Navigator.pushReplacementNamed(
+                context,
+                RouteManger.learninghub,
+              ),
             ),
 
-            // PROFILE
+            // PROFILE - Updated to check if profile exists
             _buildDrawerItem(
               context,
               icon: Icons.person_outline,
               label: 'PROFILE',
-              onTap: () => Navigator.pushReplacementNamed(context, RouteManger.createProfile),
+              onTap: () => _navigateToProfile(context),
             ),
           ],
         ),
@@ -67,10 +96,12 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(BuildContext context,
-      {required IconData icon,
-      required String label,
-      required VoidCallback onTap}) {
+  Widget _buildDrawerItem(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ListTile(

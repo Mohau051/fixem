@@ -5,9 +5,17 @@ import 'package:flutter/material.dart';
 
 class CreatePage extends StatefulWidget {
   final String? prefilledEmail;
-  final String? prefilledRole; // Add this parameter
+  final String? prefilledRole;
+  final bool isEditing; // Add this parameter
+  final Map<String, dynamic>? existingProfile; // Add this parameter
 
-  const CreatePage({super.key, this.prefilledEmail, this.prefilledRole});
+  const CreatePage({
+    super.key,
+    this.prefilledEmail,
+    this.prefilledRole,
+    this.isEditing = false, // Default to false for new profiles
+    this.existingProfile, // Optional existing profile data for editing
+  });
 
   @override
   State<CreatePage> createState() => _CreatePageState();
@@ -28,13 +36,41 @@ class _CreatePageState extends State<CreatePage> {
 
   String? _selectedGender;
   String? _selectedProvince;
-  String?
-  _selectedRole; // This will be set from prefilledRole and cannot be changed
+  String? _selectedRole;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+
+    if (widget.isEditing && widget.existingProfile != null) {
+      // Editing mode: Pre-fill with existing data
+      _populateFormWithExistingData();
+    } else {
+      // New profile mode: Use prefilled data
+      _populateFormWithPrefilledData();
+    }
+  }
+
+  void _populateFormWithExistingData() {
+    final profile = widget.existingProfile!;
+
+    _nameController.text = profile['name'] ?? '';
+    _surnameController.text = profile['surname'] ?? '';
+    _ageController.text = profile['age']?.toString() ?? '';
+    _selectedGender = profile['gender'];
+    _selectedProvince = profile['province'];
+    _phoneController.text = profile['phone'] ?? '';
+    _selectedRole = profile['role'] ?? 'job_seeker';
+
+    // Email from authenticated user
+    final currentUser = _auth.currentUser;
+    if (currentUser?.email != null) {
+      _emailController.text = currentUser!.email!;
+    }
+  }
+
+  void _populateFormWithPrefilledData() {
     // Prefill email if provided
     if (widget.prefilledEmail != null) {
       _emailController.text = widget.prefilledEmail!;
@@ -55,8 +91,8 @@ class _CreatePageState extends State<CreatePage> {
     }
   }
 
-  // Save data to Firestore using the same UID from Authentication
-  Future<void> _createProfile() async {
+  // Save data to Firestore - works for both create and update
+  Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
@@ -75,8 +111,8 @@ class _CreatePageState extends State<CreatePage> {
         // Get the email from the authenticated user instead of the controller
         final authenticatedEmail = user.email;
 
-        // Use the authenticated email for the profile
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        // Data to save/update
+        final profileData = {
           'email': authenticatedEmail, // Use the authenticated email
           'name': _nameController.text.trim(),
           'surname': _surnameController.text.trim(),
@@ -87,24 +123,51 @@ class _CreatePageState extends State<CreatePage> {
           'role': _selectedRole, // Store the selected role (cannot be changed)
           'userId': user.uid,
           'authProvider': 'email_password',
-          'createdAt': Timestamp.now(),
           'updatedAt': Timestamp.now(),
-        });
+        };
+
+        // Only add createdAt for new profiles
+        if (!widget.isEditing) {
+          profileData['createdAt'] = Timestamp.now();
+        }
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set(profileData, SetOptions(merge: widget.isEditing));
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile created successfully!')),
+          SnackBar(
+            content: Text(
+              widget.isEditing
+                  ? 'Profile updated successfully!'
+                  : 'Profile created successfully!',
+            ),
+          ),
         );
 
-        // Navigate based on role
-        _navigateBasedOnRole();
+        // Navigate based on context
+        if (widget.isEditing) {
+          // If editing, go back to profile page
+          Navigator.of(context).pop(true); // Return true to indicate success
+        } else {
+          // If creating new profile, navigate based on role
+          _navigateBasedOnRole();
+        }
       } on FirebaseException catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Firestore error: ${e.message}')),
         );
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to create profile: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.isEditing
+                  ? 'Failed to update profile: $e'
+                  : 'Failed to create profile: $e',
+            ),
+          ),
+        );
       } finally {
         setState(() => _isLoading = false);
       }
@@ -185,8 +248,16 @@ class _CreatePageState extends State<CreatePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Profile'),
+        title: Text(widget.isEditing ? 'Edit Profile' : 'Create Profile'),
         backgroundColor: _getRoleColor(),
+        actions: widget.isEditing
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: _saveProfile,
+                ),
+              ]
+            : null,
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -195,9 +266,11 @@ class _CreatePageState extends State<CreatePage> {
           child: ListView(
             children: [
               const SizedBox(height: 20),
-              const Text(
-                'COMPLETE YOUR PROFILE',
-                style: TextStyle(
+              Text(
+                widget.isEditing
+                    ? 'EDIT YOUR PROFILE'
+                    : 'COMPLETE YOUR PROFILE',
+                style: const TextStyle(
                   fontSize: 28,
                   color: Colors.black,
                   fontFamily: 'Moulpali',
@@ -206,9 +279,11 @@ class _CreatePageState extends State<CreatePage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Please fill in your details to get started',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+              Text(
+                widget.isEditing
+                    ? 'Update your profile information'
+                    : 'Please fill in your details to get started',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
@@ -260,20 +335,24 @@ class _CreatePageState extends State<CreatePage> {
                         ],
                       ),
                     ),
-                    Icon(Icons.lock, color: Colors.grey, size: 16),
+                    const Icon(Icons.lock, color: Colors.grey, size: 16),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'This account type cannot be changed. If you need a different account type, please register again with the correct selection.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
+
+              if (!widget.isEditing) ...[
+                const SizedBox(height: 20),
+                const Text(
+                  'This account type cannot be changed. If you need a different account type, please register again with the correct selection.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
+              ],
+
               const SizedBox(height: 20),
 
               // Email (read-only, from authentication)
@@ -418,7 +497,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
               const SizedBox(height: 40),
 
-              // Create Button
+              // Create/Update Button
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
@@ -430,9 +509,11 @@ class _CreatePageState extends State<CreatePage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: _createProfile,
+                      onPressed: _saveProfile,
                       child: Text(
-                        'CREATE ${_getRoleDisplayName().toUpperCase()} PROFILE',
+                        widget.isEditing
+                            ? 'UPDATE PROFILE'
+                            : 'CREATE ${_getRoleDisplayName().toUpperCase()} PROFILE',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,

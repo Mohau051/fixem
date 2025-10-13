@@ -13,6 +13,7 @@ class RegisterPage extends StatefulWidget {
 class _RegisterPageState extends State<RegisterPage> {
   final _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
 
   String _email = '';
   String _password = '';
@@ -134,211 +135,247 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(50.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'WELCOME ON BOARD',
-                style: TextStyle(
-                  fontSize: 30,
-                  color: Colors.black,
-                  fontFamily: 'Moulpali',
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Register as ${_userType.toLowerCase()}',
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 40),
-
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+                const Text(
+                  'WELCOME ON BOARD',
+                  style: TextStyle(
+                    fontSize: 28,
+                    color: Colors.black,
+                    fontFamily: 'Moulpali',
                   ),
-                  labelText: 'Register as',
-                  prefixIcon: const Icon(Icons.person_outline),
+                  textAlign: TextAlign.center,
                 ),
-                value: _userType,
-                items: _userTypes.map((String type) {
-                  return DropdownMenuItem<String>(
-                    value: type,
-                    child: Row(
-                      children: [
-                        Icon(
-                          type == 'Employer'
-                              ? Icons.business_center
-                              : Icons.person,
-                          color: Colors.lightBlueAccent,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(type),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _userType = newValue!;
-                  });
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select a user type';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 8),
+                Text(
+                  'Register as ${_userType.toLowerCase()}',
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 30),
 
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _userType == 'Employer'
-                      ? Colors.orange.withOpacity(0.1)
-                      : Colors.lightBlueAccent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _userType == 'Employer'
-                        ? Colors.orange.withOpacity(0.3)
-                        : Colors.lightBlueAccent.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _userType == 'Employer'
-                          ? Icons.business_center
-                          : Icons.work,
-                      color: _userType == 'Employer'
-                          ? Colors.orange
-                          : Colors.lightBlueAccent,
-                      size: 16,
+                // User Type Dropdown
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _userType == 'Employer'
-                            ? 'You will be able to post jobs and hire talent'
-                            : 'You will be able to browse jobs and take courses',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
+                    labelText: 'Register as',
+                    prefixIcon: const Icon(Icons.person_outline),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                  ),
+                  value: _userType,
+                  items: _userTypes.map((String type) {
+                    return DropdownMenuItem<String>(
+                      value: type,
+                      child: Row(
+                        children: [
+                          Icon(
+                            type == 'Employer'
+                                ? Icons.business_center
+                                : Icons.person,
+                            color: Colors.lightBlueAccent,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(type),
+                        ],
                       ),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _userType = newValue!;
+                    });
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please select a user type';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // User Type Info Card
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _userType == 'Employer'
+                        ? Colors.orange.withOpacity(0.1)
+                        : Colors.lightBlueAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _userType == 'Employer'
+                          ? Colors.orange.withOpacity(0.3)
+                          : Colors.lightBlueAccent.withOpacity(0.3),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              TextFormField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
                   ),
-                  labelText: 'Enter your email',
-                  prefixIcon: const Icon(Icons.email),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: _validateEmail,
-                onChanged: (value) => _email = value,
-              ),
-              const SizedBox(height: 20),
-
-              TextFormField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  labelText: 'Enter your password',
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: Colors.grey,
-                    ),
-                    onPressed: () {
-                      setState(() => _isPasswordVisible = !_isPasswordVisible);
-                    },
-                  ),
-                ),
-                obscureText: !_isPasswordVisible,
-                validator: _validatePassword,
-                onChanged: (value) => _password = value,
-              ),
-              const SizedBox(height: 20),
-
-              TextFormField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  labelText: 'Confirm password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isConfirmPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: Colors.grey,
-                    ),
-                    onPressed: () {
-                      setState(
-                        () => _isConfirmPasswordVisible =
-                            !_isConfirmPasswordVisible,
-                      );
-                    },
-                  ),
-                ),
-                obscureText: !_isConfirmPasswordVisible,
-                validator: _validateConfirmPassword,
-                onChanged: (value) => _confirmPassword = value,
-              ),
-              const SizedBox(height: 40),
-
-              _isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _userType == 'Employer'
+                  child: Row(
+                    children: [
+                      Icon(
+                        _userType == 'Employer'
+                            ? Icons.business_center
+                            : Icons.work,
+                        color: _userType == 'Employer'
                             ? Colors.orange
                             : Colors.lightBlueAccent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(300, 60),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 2,
+                        size: 16,
                       ),
-                      onPressed: _register,
-                      child: Text(
-                        'REGISTER AS $_userType'.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _userType == 'Employer'
+                              ? 'You will be able to post jobs and hire talent'
+                              : 'You will be able to browse jobs and take courses',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
                         ),
                       ),
-                    ),
-
-              const SizedBox(height: 20),
-
-              TextButton(
-                onPressed: () =>
-                    Navigator.of(context).pushReplacementNamed('/login'),
-                child: const Text(
-                  'Already have an account? Login',
-                  style: TextStyle(color: Colors.lightBlueAccent),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+
+                // Email Field
+                TextFormField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    labelText: 'Enter your email',
+                    prefixIcon: const Icon(Icons.email),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: _validateEmail,
+                  onChanged: (value) => _email = value,
+                ),
+                const SizedBox(height: 16),
+
+                // Password Field
+                TextFormField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    labelText: 'Enter your password',
+                    prefixIcon: const Icon(Icons.lock),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(
+                          () => _isPasswordVisible = !_isPasswordVisible,
+                        );
+                      },
+                    ),
+                  ),
+                  obscureText: !_isPasswordVisible,
+                  validator: _validatePassword,
+                  onChanged: (value) => _password = value,
+                ),
+                const SizedBox(height: 16),
+
+                // Confirm Password Field
+                TextFormField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    labelText: 'Confirm password',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isConfirmPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(
+                          () => _isConfirmPasswordVisible =
+                              !_isConfirmPasswordVisible,
+                        );
+                      },
+                    ),
+                  ),
+                  obscureText: !_isConfirmPasswordVisible,
+                  validator: _validateConfirmPassword,
+                  onChanged: (value) => _confirmPassword = value,
+                ),
+                const SizedBox(height: 30),
+
+                // Register Button
+                _isLoading
+                    ? const CircularProgressIndicator()
+                    : SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _userType == 'Employer'
+                                ? Colors.orange
+                                : Colors.lightBlueAccent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            elevation: 2,
+                          ),
+                          onPressed: _register,
+                          child: Text(
+                            'REGISTER AS $_userType'.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                const SizedBox(height: 20),
+
+                // Login Link
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(context).pushReplacementNamed('/login'),
+                  child: const Text(
+                    'Already have an account? Login',
+                    style: TextStyle(color: Colors.lightBlueAccent),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),

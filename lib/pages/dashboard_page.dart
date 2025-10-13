@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/Models/drawer.dart';
 import 'package:fixem/pages/createprofile_page.dart';
-import 'package:fixem/auth/auth_service.dart'; // Import AuthService
+import 'package:fixem/auth/auth_service.dart';
 import 'package:flutter/material.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -13,7 +13,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  final AuthService _auth = AuthService(); // Add AuthService instance
+  final AuthService _auth = AuthService();
   String? userName;
   List<Map<String, dynamic>> recommendedJobs = [];
 
@@ -28,7 +28,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final userProfile = await _auth.getUserProfile();
 
-      if (userProfile != null) {
+      if (userProfile != null && userProfile['name'] != null) {
         setState(() {
           userName = '${userProfile['name']} ${userProfile['surname']}';
         });
@@ -112,7 +112,6 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             ElevatedButton(
               onPressed: () {
-                // Navigate to job details
                 _viewJobDetails(job['id']);
               },
               style: ElevatedButton.styleFrom(
@@ -135,8 +134,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _viewJobDetails(String jobId) {
-    // Navigate to job details page
-    // You can implement this based on your navigation structure
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Viewing job: $jobId')));
@@ -154,7 +151,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
       ),
-      drawer: const AppDrawer(),
+      drawer: AppDrawer(), // Remove const to allow dynamic behavior
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

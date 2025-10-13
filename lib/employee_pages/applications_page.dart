@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class ApplicationsPage extends StatefulWidget {
@@ -9,6 +10,10 @@ class ApplicationsPage extends StatefulWidget {
 }
 
 class _ApplicationsPageState extends State<ApplicationsPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String _selectedFilter = 'all';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -17,24 +22,112 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Title
             const Text(
-              'Job Applications',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              'My Job Applications',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.lightBlueAccent,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Applications for jobs you posted',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 16),
+
+            // Filter Dropdown
+            Row(
+              children: [
+                const Text(
+                  'Filter by:',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 12),
+                DropdownButton<String>(
+                  value: _selectedFilter,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text('All Applications'),
+                    ),
+                    DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                    DropdownMenuItem(
+                      value: 'approved',
+                      child: Text('Approved'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'rejected',
+                      child: Text('Rejected'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedFilter = value!;
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('applications')
-                    .orderBy('appliedAt', descending: true)
-                    .snapshots(),
+                stream: _getApplicationsStream(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error, size: 64, color: Colors.red),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Error: ${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.red,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {});
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text('No applications found.'));
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.assignment, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No applications found',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Applications will appear here when job seekers apply to your jobs',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   final applications = snapshot.data!.docs;
@@ -45,24 +138,29 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                       final application =
                           applications[index].data() as Map<String, dynamic>;
                       final applicationId = applications[index].id;
+                      final status = application['status'] ?? 'pending';
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 3,
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Header with applicant name and status
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    application['applicantName'] ??
-                                        'Unknown Applicant',
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
+                                  Expanded(
+                                    child: Text(
+                                      application['applicantName'] ??
+                                          'Unknown Applicant',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                   Container(
@@ -71,14 +169,11 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                       vertical: 6,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: _getStatusColor(
-                                        application['status'] ?? 'pending',
-                                      ),
+                                      color: _getStatusColor(status),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
-                                      (application['status'] ?? 'pending')
-                                          .toUpperCase(),
+                                      status.toUpperCase(),
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
@@ -89,22 +184,52 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                 ],
                               ),
                               const SizedBox(height: 8),
+
+                              // Job Title
                               Text(
                                 'Applied for: ${application['jobTitle'] ?? 'Unknown Job'}',
-                                style: const TextStyle(color: Colors.grey),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Email: ${application['applicantEmail'] ?? 'No email'}',
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Phone: ${application['applicantPhone'] ?? 'No phone'}',
-                                style: const TextStyle(fontSize: 14),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                               const SizedBox(height: 12),
-                              if (application['coverLetter'] != null)
+
+                              // Contact Information
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _buildInfoRow(
+                                          Icons.email,
+                                          application['applicantEmail'] ??
+                                              'No email',
+                                        ),
+                                        _buildInfoRow(
+                                          Icons.phone,
+                                          application['applicantPhone'] ??
+                                              'No phone',
+                                        ),
+                                        _buildInfoRow(
+                                          Icons.location_on,
+                                          application['applicantLocation'] ??
+                                              'No location',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Cover Letter
+                              if (application['coverLetter'] != null &&
+                                  application['coverLetter']
+                                      .toString()
+                                      .isNotEmpty)
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -115,10 +240,15 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(application['coverLetter']),
+                                    Text(
+                                      application['coverLetter'],
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
                                     const SizedBox(height: 12),
                                   ],
                                 ),
+
+                              // Footer with date and actions
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
@@ -130,35 +260,43 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                       color: Colors.grey,
                                     ),
                                   ),
-                                  Row(
-                                    children: [
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            _updateApplicationStatus(
-                                              applicationId,
-                                              'approved',
+
+                                  if (status == 'pending')
+                                    Row(
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              _updateApplicationStatus(
+                                                applicationId,
+                                                'approved',
+                                              ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
                                             ),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
-                                          foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Approve'),
                                         ),
-                                        child: const Text('Approve'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            _updateApplicationStatus(
-                                              applicationId,
-                                              'rejected',
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              _updateApplicationStatus(
+                                                applicationId,
+                                                'rejected',
+                                              ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
                                             ),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
-                                          foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Reject'),
                                         ),
-                                        child: const Text('Reject'),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
                                 ],
                               ),
                             ],
@@ -172,6 +310,40 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Stream<QuerySnapshot> _getApplicationsStream() {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      return const Stream.empty();
+    }
+
+    Query query = _firestore
+        .collection('applications')
+        .where('jobEmployerId', isEqualTo: currentUser.uid)
+        .orderBy(
+          'appliedAt',
+          descending: true,
+        ); // UNCOMMENT THIS LINE - INDEX IS READY!
+
+    if (_selectedFilter != 'all') {
+      query = query.where('status', isEqualTo: _selectedFilter);
+    }
+
+    return query.snapshots();
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
       ),
     );
   }
@@ -198,10 +370,10 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
     String status,
   ) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('applications')
-          .doc(applicationId)
-          .update({'status': status, 'updatedAt': Timestamp.now()});
+      await _firestore.collection('applications').doc(applicationId).update({
+        'status': status,
+        'updatedAt': Timestamp.now(),
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Application $status successfully')),

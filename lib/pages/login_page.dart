@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/admin_pages/admin_courses/admindashboard.dart';
 import 'package:fixem/auth/auth_service.dart';
-
 import 'package:fixem/employee_pages/employeedashboard.dart';
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:flutter/material.dart';
@@ -15,15 +14,15 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final AuthService _auth = AuthService(); // Use the updated AuthService
+  final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
 
   String _email = '';
   String _password = '';
   bool _isLoading = false;
   bool _isPasswordVisible = false;
 
-  // Email validation
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) return 'Please enter your email';
     if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
@@ -32,14 +31,12 @@ class _LoginPageState extends State<LoginPage> {
     return null;
   }
 
-  // Password validation
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Please enter your password';
     if (value.length < 6) return 'Password must be at least 6 characters long';
     return null;
   }
 
-  // Login function - UPDATED
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -53,24 +50,19 @@ class _LoginPageState extends State<LoginPage> {
         if (user != null) {
           final email = user.email;
 
-          // Check for admin
           if (email == 'adminfix@gmail.com') {
-            // Admin goes to admin dashboard
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => const AdminDashboard()),
             );
           } else {
-            // Check if user profile exists using the updated AuthService
             final profileExists = await _auth.checkProfileExists(user.uid);
 
             if (profileExists) {
-              // Profile exists, check user role and navigate accordingly
               final userProfile = await _auth.getUserProfile();
               final userRole = userProfile?['role'] ?? 'job_seeker';
 
               if (userRole == 'employee') {
-                // Employee goes to employee dashboard
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -78,13 +70,11 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 );
               } else {
-                // Job seeker goes to job seeker dashboard
                 Navigator.of(
                   context,
                 ).pushReplacementNamed(RouteManger.dashboard);
               }
             } else {
-              // No profile, go to create profile with email pre-filled
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -137,135 +127,161 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(50.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                "WELCOME BACK",
-                style: TextStyle(
-                  fontSize: 30,
-                  color: Colors.black,
-                  fontFamily: 'Moulpali',
-                ),
-              ),
-              const SizedBox(height: 20),
-              const SizedBox(
-                width: 121,
-                height: 261,
-                child: Image(image: AssetImage('assets/Images/login.png')),
-              ),
-              const SizedBox(height: 20),
-
-              // Email
-              TextFormField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+                const Text(
+                  "WELCOME BACK",
+                  style: TextStyle(
+                    fontSize: 28,
+                    color: Colors.black,
+                    fontFamily: 'Moulpali',
                   ),
-                  labelText: 'Enter your Email',
-                  prefixIcon: const Icon(Icons.email),
+                  textAlign: TextAlign.center,
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: _validateEmail,
-                onChanged: (value) => _email = value,
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Password
-              TextFormField(
-                obscureText: !_isPasswordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Enter your Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                // Image - made smaller and constrained
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 100,
+                    maxHeight: 200,
                   ),
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: Colors.grey,
+                  child: const Image(
+                    image: AssetImage('assets/Images/login.png'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Email Field
+                TextFormField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    labelText: 'Enter your Email',
+                    prefixIcon: const Icon(Icons.email),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: _validateEmail,
+                  onChanged: (value) => _email = value,
+                ),
+                const SizedBox(height: 16),
+
+                // Password Field
+                TextFormField(
+                  obscureText: !_isPasswordVisible,
+                  decoration: InputDecoration(
+                    labelText: 'Enter your Password',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    prefixIcon: const Icon(Icons.lock),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(
+                          () => _isPasswordVisible = !_isPasswordVisible,
+                        );
+                      },
+                    ),
+                  ),
+                  validator: _validatePassword,
+                  onChanged: (value) => _password = value,
+                ),
+                const SizedBox(height: 16),
+
+                // Forgot Password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
                     onPressed: () {
-                      setState(() => _isPasswordVisible = !_isPasswordVisible);
-                    },
-                  ),
-                ),
-                validator: _validatePassword,
-                onChanged: (value) => _password = value,
-              ),
-              const SizedBox(height: 30),
-
-              // Forgot Password?
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    // Implement forgot password functionality
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Forgot password feature coming soon!'),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Forgot Password?',
-                    style: TextStyle(color: Colors.lightBlueAccent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // Button / Loader
-              _isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.lightBlueAccent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(300, 60),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Forgot password feature coming soon!'),
                         ),
-                        elevation: 2,
+                      );
+                    },
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(color: Colors.lightBlueAccent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Login Button
+                _isLoading
+                    ? const CircularProgressIndicator()
+                    : SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.lightBlueAccent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            elevation: 2,
+                          ),
+                          onPressed: _login,
+                          child: const Text(
+                            'LOGIN',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ),
-                      onPressed: _login,
+
+                const SizedBox(height: 20),
+
+                // Sign Up Link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text("Don't have an account?"),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(
+                          context,
+                        ).pushNamed(RouteManger.registerpage);
+                      },
                       child: const Text(
-                        'LOGIN',
+                        'Sign Up',
                         style: TextStyle(
-                          fontSize: 16,
+                          color: Colors.lightBlueAccent,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-
-              const SizedBox(height: 20),
-
-              // Sign up option
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Don't have an account?"),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed(RouteManger.registerpage);
-                    },
-                    child: const Text(
-                      'Sign Up',
-                      style: TextStyle(
-                        color: Colors.lightBlueAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),

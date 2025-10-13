@@ -13,6 +13,7 @@ import 'package:fixem/pages/login_page.dart';
 import 'package:fixem/pages/main_page.dart';
 import 'package:fixem/pages/register_page.dart';
 import 'package:fixem/pages/dashboard_page.dart';
+import 'package:fixem/pages/profile_page.dart'; // Add this import
 import 'package:flutter/material.dart';
 
 class RouteManger {
@@ -20,9 +21,9 @@ class RouteManger {
   static const String registerpage = '/register';
   static const String login = '/login';
   static const String createProfile = '/CreateProfile';
+  static const String profile = '/Profile'; // Add this route
   static const String dashboard = '/Dashboard';
-  static const String employeeDashboard =
-      '/EmployeeDashboard'; // Add this route
+  static const String employeeDashboard = '/EmployeeDashboard';
   static const String jobs = '/Jobs';
   static const String jobDescription = '/JobDescription';
   static const String createjob = '/CreateJob';
@@ -56,10 +57,13 @@ class RouteManger {
           ),
         );
 
+      case profile: // Add this case
+        return MaterialPageRoute(builder: (context) => ProfilePage());
+
       case dashboard:
         return MaterialPageRoute(builder: (context) => DashboardPage());
 
-      case employeeDashboard: // Add this case
+      case employeeDashboard:
         return MaterialPageRoute(builder: (context) => EmployeeDashboard());
 
       case jobs:
@@ -86,9 +90,6 @@ class RouteManger {
 
       case learninghub:
         return MaterialPageRoute(builder: (context) => LearningHubPage());
-
-      //case quiz:
-      //return MaterialPageRoute(builder: (context) => QuizPage());
 
       case courseoverview:
         final args = settings.arguments as Map<String, dynamic>;
