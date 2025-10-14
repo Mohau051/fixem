@@ -1,11 +1,19 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.google.gms:google-services:4.4.2")
+        // Add other classpath dependencies here
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
-}
-dependencies{
-    classpath 'com.google.gms.google-services:4.4.2'
 }
 
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
@@ -15,6 +23,7 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
