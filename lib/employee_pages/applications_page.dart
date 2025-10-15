@@ -17,6 +17,14 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Job Applications'),
+        backgroundColor: Colors.lightBlueAccent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -323,10 +331,7 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
     Query query = _firestore
         .collection('applications')
         .where('jobEmployerId', isEqualTo: currentUser.uid)
-        .orderBy(
-          'appliedAt',
-          descending: true,
-        ); // UNCOMMENT THIS LINE - INDEX IS READY!
+        .orderBy('appliedAt', descending: true);
 
     if (_selectedFilter != 'all') {
       query = query.where('status', isEqualTo: _selectedFilter);

@@ -17,6 +17,14 @@ class ReadJobsPage extends StatelessWidget {
     }
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Job Posts'),
+        backgroundColor: Colors.lightBlueAccent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -39,7 +47,6 @@ class ReadJobsPage extends StatelessWidget {
 
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                // Remove orderBy temporarily to avoid index errors
                 stream: FirebaseFirestore.instance
                     .collection('jobs')
                     .where('employerId', isEqualTo: currentUser.uid)
@@ -81,12 +88,11 @@ class ReadJobsPage extends StatelessWidget {
 
                   final jobs = snapshot.data!.docs;
 
-                  // Sort manually on client side as temporary solution
                   jobs.sort((a, b) {
                     final aDate = a['createdAt'] as Timestamp?;
                     final bDate = b['createdAt'] as Timestamp?;
                     if (aDate == null || bDate == null) return 0;
-                    return bDate.compareTo(aDate); // Descending order
+                    return bDate.compareTo(aDate);
                   });
 
                   return ListView.builder(
@@ -117,7 +123,6 @@ class ReadJobsPage extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  // Application count badge
                                   StreamBuilder<QuerySnapshot>(
                                     stream: FirebaseFirestore.instance
                                         .collection('applications')
@@ -348,6 +353,7 @@ class ReadJobsPage extends StatelessWidget {
     );
   }
 
+  // ... rest of the methods remain the same (_buildErrorWidget, _viewJobApplications, _deleteJob, etc.)
   Widget _buildErrorWidget(dynamic error, BuildContext context) {
     String errorMessage = 'An error occurred';
     bool showIndexLink = false;
@@ -440,7 +446,6 @@ class ReadJobsPage extends StatelessWidget {
 
               final applications = snapshot.data!.docs;
 
-              // Sort manually on client side
               applications.sort((a, b) {
                 final aDate = a['appliedAt'] as Timestamp?;
                 final bDate = b['appliedAt'] as Timestamp?;

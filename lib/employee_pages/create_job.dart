@@ -22,10 +22,9 @@ class _CreateJobPageState extends State<CreateJobPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _isLoading = false;
-  String _selectedSalaryType = 'per month'; // Default value
+  String _selectedSalaryType = 'per month';
   DateTime? _selectedClosingDate;
 
-  // Salary type options
   final List<String> _salaryTypes = [
     'per hour',
     'per day',
@@ -54,7 +53,6 @@ class _CreateJobPageState extends State<CreateJobPage> {
   }
 
   void _submitJob() async {
-    // Validate form first
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedClosingDate == null) {
@@ -79,7 +77,6 @@ class _CreateJobPageState extends State<CreateJobPage> {
         return;
       }
 
-      // Get employer profile data
       final employerDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser.uid)
@@ -90,7 +87,6 @@ class _CreateJobPageState extends State<CreateJobPage> {
           ? '${employerData['name']} ${employerData['surname']}'
           : 'Unknown Employer';
 
-      // Format salary with type
       final salaryAmount = _salaryAmountController.text.trim();
       final formattedSalary = 'R $salaryAmount $_selectedSalaryType';
 
@@ -104,18 +100,16 @@ class _CreateJobPageState extends State<CreateJobPage> {
         'salaryType': _selectedSalaryType,
         'closingdate': _closingDateController.text.trim(),
         'closingDateTimestamp': Timestamp.fromDate(_selectedClosingDate!),
-        'employerId': currentUser.uid, // CRITICAL: Add employer ID
-        'employerName': employerName, // Add employer name for display
+        'employerId': currentUser.uid,
+        'employerName': employerName,
         'createdAt': Timestamp.now(),
         'updatedAt': Timestamp.now(),
       });
 
-      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Job created successfully!')),
       );
 
-      // Navigate to JobsPage after successful creation
       Navigator.pushReplacementNamed(context, RouteManger.readjob);
     } catch (e) {
       ScaffoldMessenger.of(
@@ -134,6 +128,10 @@ class _CreateJobPageState extends State<CreateJobPage> {
       appBar: AppBar(
         title: const Text('Create Job'),
         backgroundColor: Colors.lightBlueAccent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -252,7 +250,7 @@ class _CreateJobPageState extends State<CreateJobPage> {
               // Closing Date - Date Picker
               TextFormField(
                 controller: _closingDateController,
-                readOnly: true, // Prevent manual editing
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Closing Date',
                   border: const OutlineInputBorder(),
