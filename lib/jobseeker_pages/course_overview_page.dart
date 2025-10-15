@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart'; // ✅ YouTube player
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CourseOverviewPage extends StatefulWidget {
   final String courseId;
@@ -23,7 +24,7 @@ class CourseOverviewPage extends StatefulWidget {
 
 class _CourseOverviewPageState extends State<CourseOverviewPage> {
   late CollectionReference _unitsRef;
-  String userId = 'sampleUser123';
+  String? userId;
 
   @override
   void initState() {
@@ -32,9 +33,10 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         .collection('courses')
         .doc(widget.courseId)
         .collection('units');
+    userId = FirebaseAuth.instance.currentUser?.uid;
   }
 
-  // Update the _markUnitCompleted method in CourseOverviewPage
+  // Update the _markUnitCompleted method with badge functionality
   Future<void> _markUnitCompleted(String unitId) async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -177,6 +179,9 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
   Future<bool> _isUnitCompleted(String unitId) async {
     try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return false;
+
       final doc = await FirebaseFirestore.instance
           .collection('user_progress')
           .doc(userId)
@@ -397,8 +402,23 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     final pdfFileName = unit['pdfFileName'] ?? '';
     final pdfBase64 = unit['pdfBase64'] ?? '';
     final fileSize = unit['pdfFileSize'] ?? 0;
-
     final hasYouTube = youtubeUrl.isNotEmpty;
+
+    // ✅ YouTube Player Controller
+    YoutubePlayerController? _controller;
+    if (hasYouTube) {
+      final videoId = YoutubePlayer.convertUrlToId(youtubeUrl);
+      if (videoId != null) {
+        _controller = YoutubePlayerController(
+          initialVideoId: videoId,
+          flags: const YoutubePlayerFlags(
+            autoPlay: false, // ✅ stays paused
+            mute: false,
+            enableCaption: true,
+          ),
+        );
+      }
+    }
 
     return FutureBuilder<bool>(
       future: _isUnitCompleted(unitId),
@@ -424,7 +444,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Unit Header - Exactly like your screenshot
+                // Unit Header
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -486,8 +506,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
                 const SizedBox(height: 20),
 
-                // YouTube Video Section - Exactly like your screenshot
-                if (hasYouTube) ...[
+                // ✅ Embedded YouTube Video Section
+                if (hasYouTube && _controller != null) ...[
                   const Text(
                     "Video Lesson",
                     style: TextStyle(
@@ -498,47 +518,30 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Open in YouTube button with checkbox style
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                  // YouTube Player
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: YoutubePlayer(
+                      controller: _controller,
+                      showVideoProgressIndicator: true,
+                      progressIndicatorColor: Colors.redAccent,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: Row(
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Open in YouTube link
+                  GestureDetector(
+                    onTap: () => _launchYouTubeVideo(youtubeUrl),
+                    child: const Row(
                       children: [
-                        // Checkbox-style circle
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.grey.shade400),
+                        Icon(Icons.open_in_new, color: Colors.blue, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          "Open in YouTube",
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            "Open in YouTube",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => _launchYouTubeVideo(youtubeUrl),
-                          icon: const Icon(
-                            Icons.play_arrow,
-                            color: Colors.red,
-                            size: 24,
-                          ),
-                          tooltip: 'Open in YouTube',
                         ),
                       ],
                     ),
@@ -546,7 +549,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   const SizedBox(height: 20),
                 ],
 
-                // PDF Section - Exactly like your screenshot
+                // PDF Section
                 if (hasPdf && pdfFileName.isNotEmpty) ...[
                   const Text(
                     "Study Materials",
@@ -773,5 +776,11 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Dispose any YouTube controllers if needed
+    super.dispose();
   }
 }
