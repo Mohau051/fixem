@@ -5,6 +5,7 @@ import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/auth/auth_service.dart';
 import 'package:fixem/pages/job_description.dart';
 import 'package:flutter/material.dart';
+import 'package:fixem/jobseeker_pages/badges_pages.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -17,12 +18,15 @@ class _DashboardPageState extends State<DashboardPage> {
   final AuthService _auth = AuthService();
   String? userName;
   List<Map<String, dynamic>> recommendedJobs = [];
+  int _badgesCount = 0;
+  bool _isLoadingBadges = true;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     _loadRecommendedJobs();
+    _loadBadgesCount();
   }
 
   Future<void> _loadUserData() async {
@@ -61,7 +65,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
       setState(() {
         recommendedJobs = snapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
+          final data = doc.data();
           return {
             'id': doc.id,
             'title': data['title'] ?? 'No Title',
@@ -78,6 +82,69 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (e) {
       print('Error loading jobs: $e');
     }
+  }
+
+  Future<void> _loadBadgesCount() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      // Method 1: Try to get from user_badges collection (more reliable)
+      final badgesSnapshot = await FirebaseFirestore.instance
+          .collection('user_badges')
+          .doc(userId)
+          .collection('badges')
+          .get();
+
+      final badgesCount = badgesSnapshot.docs.length;
+
+      // Update the user document with the correct count
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'badgesCount': badgesCount,
+        'updatedAt': Timestamp.now(),
+      }, SetOptions(merge: true));
+
+      setState(() {
+        _badgesCount = badgesCount;
+        _isLoadingBadges = false;
+      });
+    } catch (e) {
+      print('Error loading badges count: $e');
+
+      // Fallback: Try to get from user document
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser?.uid)
+            .get();
+
+        if (userDoc.exists) {
+          final data = userDoc.data();
+          setState(() {
+            _badgesCount = data?['badgesCount'] ?? 0;
+            _isLoadingBadges = false;
+          });
+        } else {
+          setState(() {
+            _badgesCount = 0;
+            _isLoadingBadges = false;
+          });
+        }
+      } catch (e2) {
+        print('Error with fallback: $e2');
+        setState(() {
+          _badgesCount = 0;
+          _isLoadingBadges = false;
+        });
+      }
+    }
+  }
+
+  void _viewAllBadges() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BadgesPage()),
+    );
   }
 
   Widget _buildJobCard(Map<String, dynamic> job) {
@@ -232,7 +299,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
             const SizedBox(height: 20),
 
-            // Badges Section
+            // Enhanced Badges Section
             Card(
               elevation: 3,
               child: Padding(
@@ -241,38 +308,86 @@ class _DashboardPageState extends State<DashboardPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Your Progress',
+                      'Your Badges & Progress',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('user_progress')
-                          .doc(FirebaseAuth.instance.currentUser?.uid)
-                          .collection('completed_courses')
-                          .doc('summary')
-                          .get(),
-                      builder: (context, snapshot) {
-                        int completedCourses = 0;
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          completedCourses = snapshot.data!['count'] ?? 0;
-                        }
 
-                        return Row(
-                          children: [
-                            const Icon(Icons.verified, color: Colors.orange),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Badges Earned: $completedCourses',
-                              style: const TextStyle(fontSize: 16),
+                    if (_isLoadingBadges)
+                      const Center(child: CircularProgressIndicator())
+                    else
+                      Column(
+                        children: [
+                          // Badges Count and Progress
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.workspace_premium,
+                                color: Colors.amber,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Badges Earned: $_badgesCount',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Progress indicator for visual appeal
+                          LinearProgressIndicator(
+                            value:
+                                _badgesCount /
+                                10, // Assuming 10 is max for visual scale
+                            backgroundColor: Colors.grey[200],
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              _badgesCount > 0 ? Colors.amber : Colors.grey,
                             ),
-                          ],
-                        );
-                      },
-                    ),
+                            minHeight: 6,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Complete courses to earn more badges!',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // View Badges Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _viewAllBadges,
+                              icon: const Icon(
+                                Icons.workspace_premium_outlined,
+                              ),
+                              label: const Text('VIEW ALL BADGES'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _badgesCount > 0
+                                    ? Colors.amber[50]
+                                    : Colors.grey[100],
+                                foregroundColor: _badgesCount > 0
+                                    ? Colors.amber[800]
+                                    : Colors.grey[600],
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),

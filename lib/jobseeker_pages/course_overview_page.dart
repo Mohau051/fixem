@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -34,8 +34,13 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         .collection('units');
   }
 
+  // Update the _markUnitCompleted method in CourseOverviewPage
   Future<void> _markUnitCompleted(String unitId) async {
     try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      // Mark unit as completed
       await FirebaseFirestore.instance
           .collection('user_progress')
           .doc(userId)
@@ -45,7 +50,12 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
             'completed': true,
             'completedAt': Timestamp.now(),
             'courseId': widget.courseId,
+            'unitId': unitId,
           });
+
+      // Check if all units in the course are completed
+      await _checkCourseCompletion();
+
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -57,6 +67,111 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  Future<void> _checkCourseCompletion() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      // Get all units for this course
+      final unitsSnapshot = await FirebaseFirestore.instance
+          .collection('courses')
+          .doc(widget.courseId)
+          .collection('units')
+          .get();
+
+      // Get completed units for this course
+      final completedUnitsSnapshot = await FirebaseFirestore.instance
+          .collection('user_progress')
+          .doc(userId)
+          .collection('completed_units')
+          .where('courseId', isEqualTo: widget.courseId)
+          .get();
+
+      final totalUnits = unitsSnapshot.docs.length;
+      final completedUnits = completedUnitsSnapshot.docs.length;
+
+      // If all units are completed, award the badge
+      if (totalUnits > 0 && completedUnits >= totalUnits) {
+        await _awardCourseBadge();
+      }
+    } catch (e) {
+      print('Error checking course completion: $e');
+    }
+  }
+
+  Future<void> _awardCourseBadge() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      // Get course details to create badge
+      final courseDoc = await FirebaseFirestore.instance
+          .collection('courses')
+          .doc(widget.courseId)
+          .get();
+
+      if (courseDoc.exists) {
+        final courseData = courseDoc.data()!;
+        final badgeTitle = courseData['badge'] ?? 'Course Completion Badge';
+        final courseTitle = courseData['title'] ?? 'Unknown Course';
+
+        // Award the badge
+        await FirebaseFirestore.instance
+            .collection('user_badges')
+            .doc(userId)
+            .collection('badges')
+            .doc(widget.courseId)
+            .set({
+              'badgeTitle': badgeTitle,
+              'courseTitle': courseTitle,
+              'courseId': widget.courseId,
+              'awardedAt': Timestamp.now(),
+              'description': courseData['description'] ?? '',
+              'duration': courseData['duration'] ?? '',
+              'matchedJobs': courseData['matchedJobs'] ?? '',
+            });
+
+        // Update badges count in user profile
+        await _updateUserBadgesCount();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Congratulations! You earned the $badgeTitle badge!',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error awarding badge: $e');
+    }
+  }
+
+  Future<void> _updateUserBadgesCount() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      final badgesSnapshot = await FirebaseFirestore.instance
+          .collection('user_badges')
+          .doc(userId)
+          .collection('badges')
+          .get();
+
+      final badgesCount = badgesSnapshot.docs.length;
+
+      // Update count in user profile
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'badgesCount': badgesCount,
+        'updatedAt': Timestamp.now(),
+      });
+    } catch (e) {
+      print('Error updating badges count: $e');
     }
   }
 

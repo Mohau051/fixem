@@ -1,9 +1,7 @@
 import 'package:fixem/admin_pages/admin_courses/create_course_page.dart';
 import 'package:fixem/admin_pages/admin_courses/create_unit_page.dart';
 import 'package:fixem/admin_pages/admin_courses/user_page.dart';
-
 import 'package:fixem/employee_pages/create_job.dart';
-import 'package:fixem/employee_pages/read_jobs.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';

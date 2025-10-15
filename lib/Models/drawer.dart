@@ -1,3 +1,4 @@
+import 'package:fixem/jobseeker_pages/badges_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:fixem/routes/routes.dart';
 import 'package:fixem/auth/auth_service.dart';
@@ -98,6 +99,20 @@ class AppDrawer extends StatelessWidget {
               label: 'LEARN',
               onTap: () =>
                   Navigator.pushNamed(context, RouteManger.learninghub),
+            ),
+
+            // BADGES - NEW: Add badges navigation
+            _buildDrawerItem(
+              context,
+              icon: Icons.workspace_premium_outlined,
+              label: 'MY BADGES',
+              onTap: () {
+                Navigator.pop(context); // Close drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const BadgesPage()),
+                );
+              },
             ),
 
             // PROFILE - Updated to check if profile exists
