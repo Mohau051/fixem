@@ -242,7 +242,7 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Unit'),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.lightBlueAccent,
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _fetchCourses(),
