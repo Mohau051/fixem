@@ -14,10 +14,10 @@ class AppDrawer extends StatelessWidget {
 
       if (userProfile != null && userProfile['name'] != null) {
         // User has a profile, navigate to profile view page
-        Navigator.pushReplacementNamed(context, RouteManger.profile);
+        Navigator.pushNamed(context, RouteManger.profile);
       } else {
         // User doesn't have a profile, navigate to create profile
-        Navigator.pushReplacement(
+        Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) =>
@@ -28,7 +28,26 @@ class AppDrawer extends StatelessWidget {
     } catch (e) {
       print('Error checking profile: $e');
       // Fallback: navigate to create profile
-      Navigator.pushReplacementNamed(context, RouteManger.createProfile);
+      Navigator.pushNamed(context, RouteManger.createProfile);
+    }
+  }
+
+  // Function to handle sign out
+  Future<void> _signOut(BuildContext context) async {
+    try {
+      final AuthService auth = AuthService();
+      await auth.signOut();
+      // Navigate to login screen and remove all previous routes
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        RouteManger.login,
+        (route) => false,
+      );
+    } catch (e) {
+      print('Error signing out: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error signing out: $e')));
     }
   }
 
@@ -72,15 +91,13 @@ class AppDrawer extends StatelessWidget {
               onTap: () => Navigator.pushNamed(context, RouteManger.jobs),
             ),
 
-            // LEARN
+            // LEARN - FIXED: Use pushNamed instead of pushReplacementNamed
             _buildDrawerItem(
               context,
               icon: Icons.school_outlined,
               label: 'LEARN',
-              onTap: () => Navigator.pushReplacementNamed(
-                context,
-                RouteManger.learninghub,
-              ),
+              onTap: () =>
+                  Navigator.pushNamed(context, RouteManger.learninghub),
             ),
 
             // PROFILE - Updated to check if profile exists
@@ -89,6 +106,18 @@ class AppDrawer extends StatelessWidget {
               icon: Icons.person_outline,
               label: 'PROFILE',
               onTap: () => _navigateToProfile(context),
+            ),
+
+            const SizedBox(height: 20),
+            const Divider(color: Colors.white54),
+            const SizedBox(height: 20),
+
+            // SIGN OUT
+            _buildDrawerItem(
+              context,
+              icon: Icons.logout,
+              label: 'SIGN OUT',
+              onTap: () => _signOut(context),
             ),
           ],
         ),

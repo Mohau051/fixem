@@ -94,8 +94,10 @@ class RouteManger {
       case courseoverview:
         final args = settings.arguments as Map<String, dynamic>;
         final courseId = args['courseId'] as String;
+        final courseTitle = args['courseTitle'] as String;
         return MaterialPageRoute(
-          builder: (context) => CourseOverviewPage(courseId: courseId),
+          builder: (context) =>
+              CourseOverviewPage(courseId: courseId, courseTitle: courseTitle),
         );
 
       case createunit:

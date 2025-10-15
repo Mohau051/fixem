@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixem/auth/auth_service.dart';
 import 'package:fixem/pages/createprofile_page.dart';
@@ -85,6 +84,13 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // Simply pop the current route to go back
+            Navigator.pop(context);
+          },
+        ),
         actions: [
           IconButton(icon: const Icon(Icons.edit), onPressed: _editProfile),
         ],
@@ -138,8 +144,9 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildInfoCard('Role', userProfile!['role'] ?? 'Not specified'),
             _buildInfoCard('Phone', userProfile!['phone'] ?? 'Not specified'),
             _buildInfoCard(
-              'Location',
-              userProfile!['location'] ?? 'Not specified',
+              'Province',
+              userProfile!['province'] ??
+                  'Not specified', // Now using 'province' field
             ),
 
             // Skills Section (for job seekers)

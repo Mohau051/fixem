@@ -39,6 +39,30 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
     }
   }
 
+  // Get the next order number for the selected course
+  Future<int> _getNextOrderNumber() async {
+    if (_selectedCourseId == null) return 1;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('courses')
+          .doc(_selectedCourseId!)
+          .collection('units')
+          .orderBy('order', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final lastOrder = snapshot.docs.first['order'] ?? 0;
+        return lastOrder + 1;
+      }
+      return 1;
+    } catch (e) {
+      print('Error getting order number: $e');
+      return 1;
+    }
+  }
+
   // Pick PDF from device
   Future<void> _pickPDF() async {
     if (_isPickingPdf) return;
@@ -46,10 +70,6 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
     setState(() => _isPickingPdf = true);
 
     try {
-      print('Starting PDF pick process...');
-
-      // Pick file
-      print('Opening file picker...');
       FilePickerResult? result;
       try {
         result = await FilePicker.platform.pickFiles(
@@ -58,27 +78,16 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
           withData: true,
           allowCompression: true,
         );
-        print(
-          'File picker completed. Result: ${result != null ? "File selected" : "Cancelled"}',
-        );
       } catch (e) {
-        print('FilePicker error details: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('File picker error: ${e.toString()}')),
         );
         return;
       }
 
-      // Process selected file
       if (result != null && result.files.isNotEmpty) {
         final platformFile = result.files.single;
-        print('Selected file details:');
-        print('- Name: ${platformFile.name}');
-        print('- Size: ${platformFile.size}');
-        print('- Extension: ${platformFile.extension}');
-        print('- Bytes available: ${platformFile.bytes != null}');
 
-        // Verify it's a PDF file
         if (!platformFile.name.toLowerCase().endsWith('.pdf')) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -88,7 +97,6 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
           return;
         }
 
-        // Check if bytes are available
         if (platformFile.bytes == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Could not read PDF file content')),
@@ -96,7 +104,6 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
           return;
         }
 
-        // Store the file data
         setState(() {
           _pdfFileName = platformFile.name;
           _pdfBytes = platformFile.bytes;
@@ -110,13 +117,8 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
             duration: const Duration(seconds: 3),
           ),
         );
-      } else {
-        print('No file selected or file selection cancelled');
       }
     } catch (e) {
-      print('Unexpected error in _pickPDF: $e');
-      print('Error type: ${e.runtimeType}');
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error selecting PDF: ${e.toString()}')),
       );
@@ -125,63 +127,9 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
     }
   }
 
-  // Handle PDF upload - Store PDF data directly in Firestore
-  Future<(bool success, String message, Map<String, dynamic> pdfData)>
-  _handlePdfUpload() async {
-    try {
-      if (_pdfBytes == null || _pdfFileName == null) {
-        return Future.value((
-          false,
-          "No PDF file selected",
-          <String, dynamic>{},
-        ));
-      }
-
-      // File size limit check (10MB like in C#)
-      if (_pdfBytes!.length > 10 * 1024 * 1024) {
-        return Future.value((
-          false,
-          "File size exceeds 10MB limit",
-          <String, dynamic>{},
-        ));
-      }
-
-      // File type validation
-      if (!_pdfFileName!.toLowerCase().endsWith('.pdf')) {
-        return Future.value((
-          false,
-          "Invalid file type. Only PDF files are allowed",
-          <String, dynamic>{},
-        ));
-      }
-
-      // Instead of saving to local storage, we'll store the PDF data in Firestore
-      final pdfData = <String, dynamic>{
-        'fileName': _pdfFileName,
-        'fileSize': _pdfBytes!.length,
-        'uploadedAt': Timestamp.now(),
-        'hasPdf': true,
-      };
-
-      return Future.value((true, "PDF ready for upload", pdfData));
-    } catch (e) {
-      print('Error in _handlePdfUpload: $e');
-      return Future.value((
-        false,
-        "Error processing PDF: ${e.toString()}",
-        <String, dynamic>{},
-      ));
-    }
-  }
-
   // Convert bytes to base64 string
   String _bytesToBase64(Uint8List bytes) {
     return base64.encode(bytes);
-  }
-
-  // Convert base64 string back to bytes (for retrieval)
-  Uint8List _base64ToBytes(String base64String) {
-    return base64.decode(base64String);
   }
 
   // Save unit to Firestore
@@ -191,55 +139,47 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
     setState(() => _isLoading = true);
 
     try {
+      // Get the next order number
+      final orderNumber = await _getNextOrderNumber();
+
       Map<String, dynamic> pdfData = {};
       String? pdfBase64;
 
-      // Handle PDF upload only when saving
+      // Handle PDF upload
       if (_pdfBytes != null && _pdfFileName != null) {
-        print('=== Starting PDF upload process ===');
-
-        // Try the direct storage approach first
-        var (success, message, data) = await _handlePdfUpload();
-
-        if (!success) {
-          print('PDF upload failed: $message');
+        // File size limit check (10MB)
+        if (_pdfBytes!.length > 10 * 1024 * 1024) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              duration: const Duration(seconds: 4),
+            const SnackBar(
+              content: Text("File size exceeds 10MB limit"),
+              duration: Duration(seconds: 4),
             ),
           );
           setState(() => _isLoading = false);
           return;
         }
 
-        pdfData = data;
-
-        // Also store the PDF as base64 for direct access
         pdfBase64 = _bytesToBase64(_pdfBytes!);
-
-        print('PDF successfully processed');
       }
 
-      // Prepare unit data
+      // Prepare unit data WITH ORDER FIELD
       Map<String, dynamic> unitData = {
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
         'youtubeUrl': _youtubeUrlController.text.trim(),
+        'order': orderNumber, // THIS IS THE CRITICAL FIELD THAT WAS MISSING
         'createdAt': Timestamp.now(),
         'updatedAt': Timestamp.now(),
       };
 
       // Handle PDF data
-      if (pdfData.isNotEmpty && pdfBase64 != null) {
+      if (pdfBase64 != null) {
         unitData.addAll({
           'pdfFileName': _pdfFileName,
           'pdfFileSize': _pdfBytes!.length,
-          'pdfBase64': pdfBase64, // Store PDF content directly
+          'pdfBase64': pdfBase64,
           'hasPdf': true,
-          'uploadedAt': Timestamp.now(),
         });
-        print('Unit data includes PDF: ${_pdfFileName}');
       } else {
         unitData.addAll({
           'pdfFileName': '',
@@ -247,36 +187,25 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
           'pdfBase64': '',
           'hasPdf': false,
         });
-        print('Unit data does not include PDF');
       }
 
       // Save to Firestore
-      print('Saving unit to Firestore...');
-      final docRef = await FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('courses')
           .doc(_selectedCourseId)
           .collection('units')
           .add(unitData);
 
-      // Generate numeric ID
-      final numericId = docRef.id.hashCode.abs() % 100000000;
-
-      // Update with numeric ID
-      await docRef.update({'numericId': numericId});
-
-      print('Unit saved successfully to Firestore with ID: ${docRef.id}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Unit created successfully!'),
-          duration: const Duration(seconds: 3),
+          duration: Duration(seconds: 3),
         ),
       );
 
       // Clear form after successful save
       _clearForm();
     } catch (e) {
-      print('Error saving unit: $e');
-      print('Error type: ${e.runtimeType}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to save unit: ${e.toString()}'),
@@ -392,12 +321,11 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
                   TextFormField(
                     controller: _youtubeUrlController,
                     decoration: const InputDecoration(
-                      labelText: 'YouTube Video URL *',
+                      labelText: 'YouTube Video URL',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.video_library),
                     ),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Enter YouTube link' : null,
+                    // Made optional since your screenshot shows PDF-focused content
                   ),
 
                   const SizedBox(height: 20),
@@ -462,13 +390,6 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
                                             style: const TextStyle(
                                               fontSize: 12,
                                               color: Colors.grey,
-                                            ),
-                                          ),
-                                          Text(
-                                            'Will be stored in Firestore',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.orange[700],
                                             ),
                                           ),
                                         ],
