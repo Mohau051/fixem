@@ -23,6 +23,10 @@ class _CreateUnitPageState extends State<CreateUnitPage> {
   String? _selectedCourseId;
   String? _pdfFileName;
   Uint8List? _pdfBytes;
+  bool _isMuted = false;
+  bool _videoWatchedCompletely = false; // ✅ New
+
+  
 
   // Load all courses from Firestore for dropdown
   Future<List<Map<String, dynamic>>> _fetchCourses() async {

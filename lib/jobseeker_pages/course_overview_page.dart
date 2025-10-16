@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart'; // ✅ YouTube player
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -25,6 +25,10 @@ class CourseOverviewPage extends StatefulWidget {
 class _CourseOverviewPageState extends State<CourseOverviewPage> {
   late CollectionReference _unitsRef;
   String? userId;
+  
+  // Track video completion status for each unit
+  Map<String, bool> videoCompletionStatus = {};
+  Map<String, YoutubePlayerController> videoControllers = {};
 
   @override
   void initState() {
@@ -36,11 +40,23 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     userId = FirebaseAuth.instance.currentUser?.uid;
   }
 
-  // Update the _markUnitCompleted method with badge functionality
   Future<void> _markUnitCompleted(String unitId) async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
+
+      // Check if video was watched completely
+      if (videoCompletionStatus[unitId] != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Please watch the full video before marking as complete'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
 
       // Mark unit as completed
       await FirebaseFirestore.instance
@@ -59,13 +75,16 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
       await _checkCourseCompletion();
 
       setState(() {});
+      
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unit marked as completed!'),
+          content: Text('✅ Unit marked as completed!'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -109,6 +128,16 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
 
+      // Check if badge already awarded
+      final existingBadge = await FirebaseFirestore.instance
+          .collection('user_badges')
+          .doc(userId)
+          .collection('badges')
+          .doc(widget.courseId)
+          .get();
+
+      if (existingBadge.exists) return;
+
       // Get course details to create badge
       final courseDoc = await FirebaseFirestore.instance
           .collection('courses')
@@ -139,6 +168,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         // Update badges count in user profile
         await _updateUserBadgesCount();
 
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -167,7 +197,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
       final badgesCount = badgesSnapshot.docs.length;
 
-      // Update count in user profile
       await FirebaseFirestore.instance.collection('users').doc(userId).update({
         'badgesCount': badgesCount,
         'updatedAt': Timestamp.now(),
@@ -196,7 +225,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
   Future<void> _viewPdf(String pdfBase64, String fileName) async {
     try {
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -211,24 +239,18 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         ),
       );
 
-      // Convert base64 to bytes
       final pdfBytes = base64.decode(pdfBase64);
-
-      // Get temporary directory
       final tempDir = await getTemporaryDirectory();
       final filePath = '${tempDir.path}/$fileName';
       final file = File(filePath);
-
-      // Write PDF to temporary file
       await file.writeAsBytes(pdfBytes);
 
-      // Close loading dialog
       if (mounted) Navigator.of(context).pop();
 
-      // Open the PDF file
       final result = await OpenFile.open(filePath);
 
       if (result.type != ResultType.done) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Could not open PDF: ${result.message}'),
@@ -237,9 +259,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         );
       }
     } catch (e) {
-      // Close loading dialog if still open
       if (mounted) Navigator.of(context).pop();
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error opening PDF: $e'),
@@ -251,7 +272,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
   Future<void> _downloadPdf(String pdfBase64, String fileName) async {
     try {
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -266,10 +286,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         ),
       );
 
-      // Convert base64 to bytes
       final pdfBytes = base64.decode(pdfBase64);
 
-      // Get downloads directory (or documents directory as fallback)
       Directory? downloadsDir;
       try {
         if (Platform.isAndroid) {
@@ -288,12 +306,10 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
       final filePath = '${downloadsDir?.path}/$fileName';
       final file = File(filePath);
-
-      // Write PDF to file
       await file.writeAsBytes(pdfBytes);
 
-      // Close loading dialog
       if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -303,9 +319,9 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         ),
       );
     } catch (e) {
-      // Close loading dialog if still open
       if (mounted) Navigator.of(context).pop();
-
+      if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error downloading PDF: $e'),
@@ -375,6 +391,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
           mode: LaunchMode.externalApplication,
         );
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Could not open video"),
@@ -383,6 +400,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error opening video: $e"),
@@ -404,19 +422,33 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     final fileSize = unit['pdfFileSize'] ?? 0;
     final hasYouTube = youtubeUrl.isNotEmpty;
 
-    // ✅ YouTube Player Controller
-    YoutubePlayerController? _controller;
+    // Initialize video completion status
+    if (!videoCompletionStatus.containsKey(unitId)) {
+      videoCompletionStatus[unitId] = false;
+    }
+
+    // YouTube Player Controller with seek disabled
+    YoutubePlayerController? controller;
     if (hasYouTube) {
       final videoId = YoutubePlayer.convertUrlToId(youtubeUrl);
       if (videoId != null) {
-        _controller = YoutubePlayerController(
-          initialVideoId: videoId,
-          flags: const YoutubePlayerFlags(
-            autoPlay: false, // ✅ stays paused
-            mute: false,
-            enableCaption: true,
-          ),
-        );
+        // Check if controller already exists for this unit
+        if (!videoControllers.containsKey(unitId)) {
+          controller = YoutubePlayerController(
+            initialVideoId: videoId,
+            flags: const YoutubePlayerFlags(
+              autoPlay: false,
+              mute: false,
+              enableCaption: true,
+              disableDragSeek: true, // ✅ Disable seeking/skipping
+              hideControls: false,
+              controlsVisibleAtStart: true,
+            ),
+          );
+          videoControllers[unitId] = controller;
+        } else {
+          controller = videoControllers[unitId];
+        }
       }
     }
 
@@ -424,6 +456,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
       future: _isUnitCompleted(unitId),
       builder: (context, snapshot) {
         final isCompleted = snapshot.data ?? false;
+        final canComplete = videoCompletionStatus[unitId] ?? false;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -457,14 +490,16 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                         shape: BoxShape.circle,
                       ),
                       child: Center(
-                        child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
+                        child: isCompleted
+                            ? const Icon(Icons.check, color: Colors.white, size: 20)
+                            : Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -482,9 +517,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                               color: isCompleted
                                   ? Colors.green
                                   : Colors.black87,
-                              decoration: isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
                             ),
                           ),
                           if (unitDescription.isNotEmpty) ...[
@@ -506,8 +538,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
                 const SizedBox(height: 20),
 
-                // ✅ Embedded YouTube Video Section
-                if (hasYouTube && _controller != null) ...[
+                // ✅ Embedded YouTube Video Section - ALWAYS VISIBLE
+                if (hasYouTube && controller != null) ...[
                   const Text(
                     "Video Lesson",
                     style: TextStyle(
@@ -518,16 +550,62 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   ),
                   const SizedBox(height: 12),
 
-                  // YouTube Player
+                  // YouTube Player with seek disabled
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: YoutubePlayer(
-                      controller: _controller,
+                      controller: controller,
                       showVideoProgressIndicator: true,
                       progressIndicatorColor: Colors.redAccent,
+                      onEnded: (metaData) {
+                        // Video has ended - mark as watched
+                        setState(() {
+                          videoCompletionStatus[unitId] = true;
+                        });
+                      },
                     ),
                   ),
                   const SizedBox(height: 8),
+
+                  // Video completion status indicator (only show if not completed)
+                  if (!isCompleted) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: canComplete ? Colors.green.shade50 : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: canComplete ? Colors.green : Colors.orange,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            canComplete ? Icons.check_circle : Icons.info_outline,
+                            size: 18,
+                            color: canComplete ? Colors.green : Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              canComplete
+                                  ? '✓ Video watched completely'
+                                  : '⚠️ Please watch the full video to mark as complete',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: canComplete ? Colors.green.shade800 : Colors.orange.shade800,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
 
                   // Open in YouTube link
                   GestureDetector(
@@ -549,7 +627,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   const SizedBox(height: 20),
                 ],
 
-                // PDF Section
+                // PDF Section - ALWAYS AVAILABLE
                 if (hasPdf && pdfFileName.isNotEmpty) ...[
                   const Text(
                     "Study Materials",
@@ -599,6 +677,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black87,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -629,27 +709,66 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   const SizedBox(height: 20),
                 ],
 
-                // Complete Button
+                // Complete Button - Only enabled after video is watched
                 if (!isCompleted)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => _markUnitCompleted(unitId),
+                      onPressed: canComplete
+                          ? () => _markUnitCompleted(unitId)
+                          : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor: canComplete ? Colors.green : Colors.grey,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
+                        disabledBackgroundColor: Colors.grey.shade300,
+                        disabledForegroundColor: Colors.grey.shade600,
                       ),
-                      child: const Text(
-                        'Mark as Completed',
-                        style: TextStyle(
+                      child: Text(
+                        canComplete
+                            ? 'Mark as Completed'
+                            : 'Watch Video to Complete',
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                    ),
+                  ),
+
+                // Completed Badge
+                if (isCompleted)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Unit Completed',
+                          style: TextStyle(
+                            color: Colors.green.shade800,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -780,7 +899,11 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
   @override
   void dispose() {
-    // Dispose any YouTube controllers if needed
+    // Dispose all YouTube controllers
+    for (var controller in videoControllers.values) {
+      controller.dispose();
+    }
+    videoControllers.clear();
     super.dispose();
   }
 }
