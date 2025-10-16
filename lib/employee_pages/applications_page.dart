@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fixem/employee_pages/applicant_profile_page.dart';
 import 'package:flutter/material.dart';
 
 class ApplicationsPage extends StatefulWidget {
@@ -147,6 +148,7 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                           applications[index].data() as Map<String, dynamic>;
                       final applicationId = applications[index].id;
                       final status = application['status'] ?? 'pending';
+                      final applicantId = application['applicantId'];
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -162,12 +164,21 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      application['applicantName'] ??
-                                          'Unknown Applicant',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
+                                    child: GestureDetector(
+                                      onTap: () => _viewApplicantProfile(
+                                        context,
+                                        applicantId,
+                                        applicationId,
+                                        application,
+                                      ),
+                                      child: Text(
+                                        application['applicantName'] ??
+                                            'Unknown Applicant',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -233,6 +244,88 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                               ),
                               const SizedBox(height: 12),
 
+                              // Applicant Badges
+                              FutureBuilder<QuerySnapshot>(
+                                future: _firestore
+                                    .collection('user_badges')
+                                    .doc(applicantId)
+                                    .collection('badges')
+                                    .limit(3) // Show only 3 badges in preview
+                                    .get(),
+                                builder: (context, badgeSnapshot) {
+                                  if (badgeSnapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const SizedBox.shrink();
+                                  }
+
+                                  if (badgeSnapshot.hasData &&
+                                      badgeSnapshot.data!.docs.isNotEmpty) {
+                                    final badges = badgeSnapshot.data!.docs;
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Earned Badges:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: badges
+                                              .map((badgeDoc) {
+                                                final badge =
+                                                    badgeDoc.data()
+                                                        as Map<String, dynamic>;
+                                                return Chip(
+                                                  label: Text(
+                                                    badge['badgeTitle'] ??
+                                                        'Unknown Badge',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  backgroundColor: Colors.amber
+                                                      .withOpacity(0.2),
+                                                  avatar: const Icon(
+                                                    Icons.workspace_premium,
+                                                    size: 16,
+                                                    color: Colors.amber,
+                                                  ),
+                                                  materialTapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                );
+                                              })
+                                              .take(3)
+                                              .toList(),
+                                        ),
+                                        if (badges.length > 3)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            child: Text(
+                                              '+ ${badges.length - 3} more badges',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.blue,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                        const SizedBox(height: 12),
+                                      ],
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+
                               // Cover Letter
                               if (application['coverLetter'] != null &&
                                   application['coverLetter']
@@ -251,6 +344,8 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
                                     Text(
                                       application['coverLetter'],
                                       style: const TextStyle(fontSize: 14),
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 12),
                                   ],
@@ -317,6 +412,24 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _viewApplicantProfile(
+    BuildContext context,
+    String applicantId,
+    String applicationId,
+    Map<String, dynamic> application,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ApplicantProfilePage(
+          applicantId: applicantId,
+          applicationId: applicationId,
+          applicationData: application,
         ),
       ),
     );
