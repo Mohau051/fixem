@@ -1,4 +1,5 @@
 import 'package:fixem/jobseeker_pages/badges_pages.dart';
+import 'package:fixem/pages/career_chatbot_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fixem/routes/routes.dart';
 import 'package:fixem/auth/auth_service.dart';
@@ -111,6 +112,22 @@ class AppDrawer extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const BadgesPage()),
+                );
+              },
+            ),
+
+            // CAREER CHATBOT
+            _buildDrawerItem(
+              context,
+              icon: Icons.smart_toy_rounded,
+              label: 'CAREER CHATBOT',
+              onTap: () {
+                Navigator.pop(context); // Close drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CareerChatbotPage(),
+                  ),
                 );
               },
             ),

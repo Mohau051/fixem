@@ -5,6 +5,7 @@ import 'package:fixem/employee_pages/employeedashboard.dart';
 import 'package:fixem/employee_pages/read_jobs.dart';
 import 'package:fixem/jobseeker_pages/course_overview_page.dart';
 import 'package:fixem/jobseeker_pages/learning_hub_page.dart';
+import 'package:fixem/pages/career_chatbot_page.dart';
 import 'package:fixem/pages/createprofile_page.dart';
 import 'package:fixem/pages/edit_job.dart';
 import 'package:fixem/pages/job_description.dart';
@@ -34,6 +35,7 @@ class RouteManger {
   static const String courseoverview = '/CourseOverview';
   static const String createunit = '/CreateUnit';
   static const String createcourse = '/CreateCourse';
+  static const String careerChatbot = '/CareerChatbot';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -106,6 +108,11 @@ class RouteManger {
       case createcourse:
         return MaterialPageRoute(
           builder: (context) => const CreateCoursePage(),
+        );
+
+      case careerChatbot:
+        return MaterialPageRoute(
+          builder: (context) => const CareerChatbotPage(),
         );
 
       default:
