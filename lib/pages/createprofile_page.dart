@@ -420,11 +420,6 @@ class _CreatePageState extends State<CreatePage> {
                 items: const [
                   DropdownMenuItem(value: 'Male', child: Text('Male')),
                   DropdownMenuItem(value: 'Female', child: Text('Female')),
-                  DropdownMenuItem(value: 'Other', child: Text('Other')),
-                  DropdownMenuItem(
-                    value: 'Prefer not to say',
-                    child: Text('Prefer not to say'),
-                  ),
                 ],
                 onChanged: (value) {
                   setState(() {

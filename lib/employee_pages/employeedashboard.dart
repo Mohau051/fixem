@@ -308,12 +308,13 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: _currentIndex == 0
-            ? const Text('Employee Dashboard')
+            ? const Text('Employer Dashboard')
             : _currentIndex == 1
             ? const Text('Job Management')
             : const Text('Profile'),
         backgroundColor: Colors.lightBlueAccent,
         elevation: 0,
+        automaticallyImplyLeading: false, // remove back arrow
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -400,42 +401,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
           ),
           const SizedBox(height: 16),
 
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            children: [
-              _buildStatsCard(
-                'Total Jobs',
-                totalJobs,
-                Icons.work,
-                Colors.green,
-                _navigateToJobsFromOverview, // FIXED: Now opens in new screen
-              ),
-              _buildStatsCard(
-                'Applications',
-                applicationsCount,
-                Icons.people,
-                Colors.purple,
-                _navigateToApplicationsFromOverview,
-              ),
-              _buildStatsCard(
-                'This Month',
-                0,
-                Icons.trending_up,
-                Colors.red,
-                () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Monthly statistics coming soon!'),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+          // Live stats via StreamBuilder so counts update automatically
+          _buildLiveStatsGrid(),
 
           const SizedBox(height: 32),
 
@@ -524,6 +491,55 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Live stats grid — counts update the moment Firestore changes.
+  Widget _buildLiveStatsGrid() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs')
+          .where('employerId', isEqualTo: uid)
+          .snapshots(),
+      builder: (context, jobsSnap) {
+        final jobCount = jobsSnap.data?.docs.length ?? 0;
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('applications')
+              .where('jobEmployerId', isEqualTo: uid)
+              .snapshots(),
+          builder: (context, appsSnap) {
+            final appsCount = appsSnap.data?.docs.length ?? 0;
+
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              children: [
+                _buildStatsCard(
+                  'Total Jobs',
+                  jobCount,
+                  Icons.work,
+                  Colors.green,
+                  _navigateToJobsFromOverview,
+                ),
+                _buildStatsCard(
+                  'Applications',
+                  appsCount,
+                  Icons.people,
+                  Colors.purple,
+                  _navigateToApplicationsFromOverview,
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

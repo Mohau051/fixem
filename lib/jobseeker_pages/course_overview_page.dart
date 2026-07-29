@@ -1,12 +1,13 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:chewie/chewie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart';
-import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
 
 class CourseOverviewPage extends StatefulWidget {
   final String courseId;
@@ -25,10 +26,21 @@ class CourseOverviewPage extends StatefulWidget {
 class _CourseOverviewPageState extends State<CourseOverviewPage> {
   late CollectionReference _unitsRef;
   String? userId;
-  
-  // Track video completion status for each unit
-  Map<String, bool> videoCompletionStatus = {};
-  Map<String, YoutubePlayerController> videoControllers = {};
+
+  /// Whether the video for each unit has been fully watched
+  final Map<String, bool> _videoCompleted = {};
+
+  /// Native video controllers keyed by unitId
+  final Map<String, VideoPlayerController> _vpControllers = {};
+
+  /// Chewie controllers keyed by unitId
+  final Map<String, ChewieController> _chewieControllers = {};
+
+  /// Whether the player for a unit is still initialising
+  final Map<String, bool> _playerLoading = {};
+
+  /// Whether a player had an error initialising
+  final Map<String, String?> _playerError = {};
 
   @override
   void initState() {
@@ -40,301 +52,265 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     userId = FirebaseAuth.instance.currentUser?.uid;
   }
 
+  // ── Video player lifecycle ───────────────────────────────────────────────
+
+  Future<void> _initVideoPlayer(String unitId, String videoUrl) async {
+    if (_vpControllers.containsKey(unitId)) return; // already initialised
+
+    setState(() => _playerLoading[unitId] = true);
+
+    try {
+      final vpController =
+          VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      _vpControllers[unitId] = vpController;
+      await vpController.initialize();
+
+      // Listen for video completion
+      vpController.addListener(() {
+        if (!mounted) return;
+        final pos = vpController.value.position;
+        final dur = vpController.value.duration;
+        // Mark complete when within 1 second of end
+        if (dur.inSeconds > 0 &&
+            pos.inSeconds >= dur.inSeconds - 1 &&
+            _videoCompleted[unitId] != true) {
+          setState(() => _videoCompleted[unitId] = true);
+        }
+      });
+
+      final chewieController = ChewieController(
+        videoPlayerController: vpController,
+        autoPlay: false,
+        looping: false,
+        draggableProgressBar: false, // 🔒 prevent seeking/skipping
+        allowFullScreen: true,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.blueAccent,
+          handleColor: Colors.blueAccent,
+          backgroundColor: Colors.grey.shade300,
+          bufferedColor: Colors.blueAccent.withValues(alpha: 0.4),
+        ),
+        placeholder: Container(color: Colors.black),
+        errorBuilder: (ctx, msg) => Center(
+          child: Text(
+            'Error playing video: $msg',
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+
+      _chewieControllers[unitId] = chewieController;
+    } catch (e) {
+      _playerError[unitId] = e.toString();
+    } finally {
+      if (mounted) setState(() => _playerLoading[unitId] = false);
+    }
+  }
+
+  // ── Unit completion ──────────────────────────────────────────────────────
+
   Future<void> _markUnitCompleted(String unitId) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
-      // Check if video was watched completely
-      if (videoCompletionStatus[unitId] != true) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ Please watch the full video before marking as complete'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 3),
-          ),
+      if (_videoCompleted[unitId] != true) {
+        _showSnack(
+          '⚠️ Please watch the full video before marking as complete',
+          color: Colors.orange,
         );
         return;
       }
 
-      // Mark unit as completed
       await FirebaseFirestore.instance
           .collection('user_progress')
-          .doc(userId)
+          .doc(uid)
           .collection('completed_units')
           .doc(unitId)
           .set({
-            'completed': true,
-            'completedAt': Timestamp.now(),
-            'courseId': widget.courseId,
-            'unitId': unitId,
-          });
+        'completed': true,
+        'completedAt': Timestamp.now(),
+        'courseId': widget.courseId,
+        'unitId': unitId,
+      });
 
-      // Check if all units in the course are completed
       await _checkCourseCompletion();
-
-      setState(() {});
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Unit marked as completed!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) setState(() {});
+      _showSnack('✅ Unit marked as completed!', color: Colors.green);
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      _showSnack('Error: $e', color: Colors.red);
     }
   }
 
   Future<void> _checkCourseCompletion() async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
-      // Get all units for this course
-      final unitsSnapshot = await FirebaseFirestore.instance
+      final unitsSnap = await FirebaseFirestore.instance
           .collection('courses')
           .doc(widget.courseId)
           .collection('units')
           .get();
 
-      // Get completed units for this course
-      final completedUnitsSnapshot = await FirebaseFirestore.instance
+      final completedSnap = await FirebaseFirestore.instance
           .collection('user_progress')
-          .doc(userId)
+          .doc(uid)
           .collection('completed_units')
           .where('courseId', isEqualTo: widget.courseId)
           .get();
 
-      final totalUnits = unitsSnapshot.docs.length;
-      final completedUnits = completedUnitsSnapshot.docs.length;
-
-      // If all units are completed, award the badge
-      if (totalUnits > 0 && completedUnits >= totalUnits) {
+      if (unitsSnap.docs.isNotEmpty &&
+          completedSnap.docs.length >= unitsSnap.docs.length) {
         await _awardCourseBadge();
       }
     } catch (e) {
-      print('Error checking course completion: $e');
+      debugPrint('Error checking course completion: $e');
     }
   }
 
   Future<void> _awardCourseBadge() async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
-      // Check if badge already awarded
-      final existingBadge = await FirebaseFirestore.instance
+      final existing = await FirebaseFirestore.instance
           .collection('user_badges')
-          .doc(userId)
+          .doc(uid)
           .collection('badges')
           .doc(widget.courseId)
           .get();
+      if (existing.exists) return;
 
-      if (existingBadge.exists) return;
-
-      // Get course details to create badge
       final courseDoc = await FirebaseFirestore.instance
           .collection('courses')
           .doc(widget.courseId)
           .get();
 
       if (courseDoc.exists) {
-        final courseData = courseDoc.data()!;
-        final badgeTitle = courseData['badge'] ?? 'Course Completion Badge';
-        final courseTitle = courseData['title'] ?? 'Unknown Course';
-
-        // Award the badge
+        final data = courseDoc.data()!;
         await FirebaseFirestore.instance
             .collection('user_badges')
-            .doc(userId)
+            .doc(uid)
             .collection('badges')
             .doc(widget.courseId)
             .set({
-              'badgeTitle': badgeTitle,
-              'courseTitle': courseTitle,
-              'courseId': widget.courseId,
-              'awardedAt': Timestamp.now(),
-              'description': courseData['description'] ?? '',
-              'duration': courseData['duration'] ?? '',
-              'matchedJobs': courseData['matchedJobs'] ?? '',
-            });
+          'badgeTitle': data['badge'] ?? 'Course Completion Badge',
+          'courseTitle': data['title'] ?? 'Unknown Course',
+          'courseId': widget.courseId,
+          'awardedAt': Timestamp.now(),
+          'description': data['description'] ?? '',
+          'duration': data['duration'] ?? '',
+          'matchedJobs': data['matchedJobs'] ?? '',
+        });
 
-        // Update badges count in user profile
         await _updateUserBadgesCount();
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '🎉 Congratulations! You earned the $badgeTitle badge!',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 5),
-          ),
+        _showSnack(
+          '🎉 Congratulations! You earned the ${data['badge'] ?? 'Course Completion'} badge!',
+          color: Colors.green,
+          duration: const Duration(seconds: 5),
         );
       }
     } catch (e) {
-      print('Error awarding badge: $e');
+      debugPrint('Error awarding badge: $e');
     }
   }
 
   Future<void> _updateUserBadgesCount() async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
-
-      final badgesSnapshot = await FirebaseFirestore.instance
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final snap = await FirebaseFirestore.instance
           .collection('user_badges')
-          .doc(userId)
+          .doc(uid)
           .collection('badges')
           .get();
-
-      final badgesCount = badgesSnapshot.docs.length;
-
-      await FirebaseFirestore.instance.collection('users').doc(userId).update({
-        'badgesCount': badgesCount,
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'badgesCount': snap.docs.length,
         'updatedAt': Timestamp.now(),
       });
     } catch (e) {
-      print('Error updating badges count: $e');
+      debugPrint('Error updating badge count: $e');
     }
   }
 
   Future<bool> _isUnitCompleted(String unitId) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return false;
-
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return false;
       final doc = await FirebaseFirestore.instance
           .collection('user_progress')
-          .doc(userId)
+          .doc(uid)
           .collection('completed_units')
           .doc(unitId)
           .get();
       return doc.exists;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
+  // ── PDF helpers ──────────────────────────────────────────────────────────
+
   Future<void> _viewPdf(String pdfBase64, String fileName) async {
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Preparing PDF...'),
-            ],
-          ),
-        ),
-      );
+      _showLoadingDialog('Preparing PDF…');
+      final bytes = base64.decode(pdfBase64);
 
-      final pdfBytes = base64.decode(pdfBase64);
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/$fileName';
-      final file = File(filePath);
-      await file.writeAsBytes(pdfBytes);
+      // Save to app documents directory — always accessible, no permission needed
+      final appDir = await getApplicationDocumentsDirectory();
+      final file = File('${appDir.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
 
       if (mounted) Navigator.of(context).pop();
 
-      final result = await OpenFile.open(filePath);
-
-      if (result.type != ResultType.done) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open PDF: ${result.message}'),
-            backgroundColor: Colors.red,
-          ),
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        _showSnack(
+          'No PDF viewer found. Try installing a PDF app.',
+          color: Colors.orange,
         );
       }
     } catch (e) {
-      if (mounted) Navigator.of(context).pop();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        try { Navigator.of(context).pop(); } catch (_) {}
+        _showSnack('Error opening PDF: $e', color: Colors.red);
+      }
     }
   }
 
   Future<void> _downloadPdf(String pdfBase64, String fileName) async {
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Downloading PDF...'),
-            ],
-          ),
-        ),
-      );
+      _showLoadingDialog('Saving PDF…');
+      final bytes = base64.decode(pdfBase64);
 
-      final pdfBytes = base64.decode(pdfBase64);
+      // Use app documents directory — works on all Android versions without permissions
+      final appDir = await getApplicationDocumentsDirectory();
+      final file = File('${appDir.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
 
-      Directory? downloadsDir;
-      try {
-        if (Platform.isAndroid) {
-          downloadsDir = Directory('/storage/emulated/0/Download');
-          if (!await downloadsDir.exists()) {
-            downloadsDir = await getExternalStorageDirectory();
-          }
-        } else if (Platform.isIOS) {
-          downloadsDir = await getApplicationDocumentsDirectory();
-        } else {
-          downloadsDir = await getDownloadsDirectory();
-        }
-      } catch (e) {
-        downloadsDir = await getApplicationDocumentsDirectory();
+      if (mounted) Navigator.of(context).pop();
+
+      // Open it immediately so the user can also share/save from their PDF viewer
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        _showSnack(
+          'PDF saved to: ${file.path}',
+          color: Colors.green,
+        );
       }
-
-      final filePath = '${downloadsDir?.path}/$fileName';
-      final file = File(filePath);
-      await file.writeAsBytes(pdfBytes);
-
-      if (mounted) Navigator.of(context).pop();
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('PDF downloaded to: $filePath'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
     } catch (e) {
-      if (mounted) Navigator.of(context).pop();
-      if (!mounted) return;
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error downloading PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        try { Navigator.of(context).pop(); } catch (_) {}
+        _showSnack('Error saving PDF: $e', color: Colors.red);
+      }
     }
   }
 
   void _showPdfOptions(String pdfBase64, String fileName) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Container(
+      builder: (ctx) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -349,7 +325,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
               title: const Text('View PDF'),
               subtitle: const Text('Open PDF in viewer'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(ctx);
                 _viewPdf(pdfBase64, fileName);
               },
             ),
@@ -358,13 +334,13 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
               title: const Text('Download PDF'),
               subtitle: const Text('Save to device storage'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(ctx);
                 _downloadPdf(pdfBase64, fileName);
               },
             ),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel'),
             ),
           ],
@@ -373,90 +349,72 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     );
   }
 
-  void _launchYouTubeVideo(String videoUrl) async {
-    if (videoUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No YouTube video available'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+  // ── Shared UI helpers ────────────────────────────────────────────────────
 
-    try {
-      if (await canLaunchUrl(Uri.parse(videoUrl))) {
-        await launchUrl(
-          Uri.parse(videoUrl),
-          mode: LaunchMode.externalApplication,
-        );
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Could not open video"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error opening video: $e"),
-          backgroundColor: Colors.red,
+  void _showLoadingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Text(message),
+          ],
         ),
-      );
-    }
+      ),
+    );
   }
+
+  void _showSnack(
+    String message, {
+    Color? color,
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: duration,
+      ),
+    );
+  }
+
+  // ── Unit Item ────────────────────────────────────────────────────────────
 
   Widget _buildUnitItem(DocumentSnapshot unitDoc, int index) {
     final unit = unitDoc.data() as Map<String, dynamic>;
     final unitId = unitDoc.id;
     final unitTitle = unit['title'] ?? 'Untitled Unit';
     final unitDescription = unit['description'] ?? '';
-    final youtubeUrl = unit['youtubeUrl'] ?? '';
-    final hasPdf = unit['hasPdf'] ?? false;
-    final pdfFileName = unit['pdfFileName'] ?? '';
-    final pdfBase64 = unit['pdfBase64'] ?? '';
-    final fileSize = unit['pdfFileSize'] ?? 0;
-    final hasYouTube = youtubeUrl.isNotEmpty;
 
-    // Initialize video completion status
-    if (!videoCompletionStatus.containsKey(unitId)) {
-      videoCompletionStatus[unitId] = false;
-    }
+    // Video
+    final hasVideo = (unit['hasVideo'] ?? false) as bool;
+    final videoUrl = (unit['videoUrl'] ?? '') as String;
 
-    // YouTube Player Controller with seek disabled
-    YoutubePlayerController? controller;
-    if (hasYouTube) {
-      final videoId = YoutubePlayer.convertUrlToId(youtubeUrl);
-      if (videoId != null) {
-        // Check if controller already exists for this unit
-        if (!videoControllers.containsKey(unitId)) {
-          controller = YoutubePlayerController(
-            initialVideoId: videoId,
-            flags: const YoutubePlayerFlags(
-              autoPlay: false,
-              mute: false,
-              enableCaption: true,
-              disableDragSeek: true, // ✅ Disable seeking/skipping
-              hideControls: false,
-              controlsVisibleAtStart: true,
-            ),
-          );
-          videoControllers[unitId] = controller;
-        } else {
-          controller = videoControllers[unitId];
-        }
-      }
+    // PDF
+    final hasPdf = (unit['hasPdf'] ?? false) as bool;
+    final pdfFileName = (unit['pdfFileName'] ?? '') as String;
+    final pdfBase64 = (unit['pdfBase64'] ?? '') as String;
+    final fileSize = (unit['pdfFileSize'] ?? 0) as int;
+
+    // Initialise video map entries
+    _videoCompleted.putIfAbsent(unitId, () => false);
+
+    // Kick off player init if needed (only once per unit)
+    if (hasVideo && videoUrl.isNotEmpty && !_vpControllers.containsKey(unitId)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initVideoPlayer(unitId, videoUrl);
+      });
     }
 
     return FutureBuilder<bool>(
       future: _isUnitCompleted(unitId),
-      builder: (context, snapshot) {
+      builder: (ctx, snapshot) {
         final isCompleted = snapshot.data ?? false;
-        final canComplete = videoCompletionStatus[unitId] ?? false;
+        final canComplete = _videoCompleted[unitId] ?? false;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -466,7 +424,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
             border: Border.all(color: Colors.grey.shade300),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -481,17 +439,19 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Unit Number
                     Container(
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: isCompleted ? Colors.green : Colors.blueAccent,
+                        color: isCompleted
+                            ? Colors.green
+                            : Colors.blueAccent,
                         shape: BoxShape.circle,
                       ),
                       child: Center(
                         child: isCompleted
-                            ? const Icon(Icons.check, color: Colors.white, size: 20)
+                            ? const Icon(Icons.check,
+                                color: Colors.white, size: 20)
                             : Text(
                                 '${index + 1}',
                                 style: const TextStyle(
@@ -503,8 +463,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
-
-                    // Unit Title and Description
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -538,10 +496,10 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
                 const SizedBox(height: 20),
 
-                // ✅ Embedded YouTube Video Section - ALWAYS VISIBLE
-                if (hasYouTube && controller != null) ...[
+                // ── In-house Video Player ──────────────────────────────
+                if (hasVideo && videoUrl.isNotEmpty) ...[
                   const Text(
-                    "Video Lesson",
+                    'Video Lesson',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -549,54 +507,50 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  _buildVideoPlayer(unitId),
+                  const SizedBox(height: 10),
 
-                  // YouTube Player with seek disabled
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: YoutubePlayer(
-                      controller: controller,
-                      showVideoProgressIndicator: true,
-                      progressIndicatorColor: Colors.redAccent,
-                      onEnded: (metaData) {
-                        // Video has ended - mark as watched
-                        setState(() {
-                          videoCompletionStatus[unitId] = true;
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Video completion status indicator (only show if not completed)
+                  // Status pill (only while not yet completed)
                   if (!isCompleted) ...[
-                    Container(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: canComplete ? Colors.green.shade50 : Colors.orange.shade50,
+                        color: canComplete
+                            ? Colors.green.shade50
+                            : Colors.orange.shade50,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: canComplete ? Colors.green : Colors.orange,
+                          color: canComplete
+                              ? Colors.green
+                              : Colors.orange,
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            canComplete ? Icons.check_circle : Icons.info_outline,
+                            canComplete
+                                ? Icons.check_circle
+                                : Icons.info_outline,
                             size: 18,
-                            color: canComplete ? Colors.green : Colors.orange,
+                            color: canComplete
+                                ? Colors.green
+                                : Colors.orange,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               canComplete
-                                  ? '✓ Video watched completely'
-                                  : '⚠️ Please watch the full video to mark as complete',
+                                  ? '✓ Video watched — you can now mark this unit as complete'
+                                  : '⚠️ Watch the full video to unlock completion',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: canComplete ? Colors.green.shade800 : Colors.orange.shade800,
+                                color: canComplete
+                                    ? Colors.green.shade800
+                                    : Colors.orange.shade800,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -604,33 +558,16 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                   ],
 
-                  // Open in YouTube link
-                  GestureDetector(
-                    onTap: () => _launchYouTubeVideo(youtubeUrl),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.open_in_new, color: Colors.blue, size: 18),
-                        SizedBox(width: 6),
-                        Text(
-                          "Open in YouTube",
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
                 ],
 
-                // PDF Section - ALWAYS AVAILABLE
+                // ── PDF Section ────────────────────────────────────────
                 if (hasPdf && pdfFileName.isNotEmpty) ...[
                   const Text(
-                    "Study Materials",
+                    'Study Materials',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -638,7 +575,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -649,7 +585,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     ),
                     child: Row(
                       children: [
-                        // PDF Icon
                         Container(
                           width: 40,
                           height: 40,
@@ -664,8 +599,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                           ),
                         ),
                         const SizedBox(width: 12),
-
-                        // PDF Info
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -691,8 +624,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                             ],
                           ),
                         ),
-
-                        // View PDF button with options
                         IconButton(
                           onPressed: () =>
                               _showPdfOptions(pdfBase64, pdfFileName),
@@ -709,26 +640,32 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                   const SizedBox(height: 20),
                 ],
 
-                // Complete Button - Only enabled after video is watched
+                // ── Complete / Completed button ─────────────────────────
                 if (!isCompleted)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: canComplete
+                      onPressed: (canComplete || !hasVideo)
                           ? () => _markUnitCompleted(unitId)
                           : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: canComplete ? Colors.green : Colors.grey,
+                        backgroundColor:
+                            (canComplete || !hasVideo)
+                                ? Colors.green
+                                : Colors.grey,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        disabledBackgroundColor: Colors.grey.shade300,
-                        disabledForegroundColor: Colors.grey.shade600,
+                        disabledBackgroundColor:
+                            Colors.grey.shade300,
+                        disabledForegroundColor:
+                            Colors.grey.shade600,
                       ),
                       child: Text(
-                        canComplete
+                        (canComplete || !hasVideo)
                             ? 'Mark as Completed'
                             : 'Watch Video to Complete',
                         style: const TextStyle(
@@ -739,7 +676,6 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     ),
                   ),
 
-                // Completed Badge
                 if (isCompleted)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -754,11 +690,8 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 20,
-                        ),
+                        const Icon(Icons.check_circle,
+                            color: Colors.green, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           'Unit Completed',
@@ -779,13 +712,99 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
     );
   }
 
+  // ── In-house video player widget ─────────────────────────────────────────
+
+  Widget _buildVideoPlayer(String unitId) {
+    final isLoading = _playerLoading[unitId] ?? false;
+    final error = _playerError[unitId];
+    final chewie = _chewieControllers[unitId];
+
+    if (isLoading) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 10),
+              Text(
+                'Loading video…',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (error != null) {
+      return Container(
+        height: 160,
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 36),
+              const SizedBox(height: 8),
+              const Text(
+                'Could not load video',
+                style: TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                error,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (chewie == null) {
+      // Still awaiting first frame callback to init
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: AspectRatio(
+        aspectRatio: _vpControllers[unitId]?.value.aspectRatio ?? 16 / 9,
+        child: Chewie(controller: chewie),
+      ),
+    );
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
-          "COURSE OVERVIEW",
+          'COURSE OVERVIEW',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -801,7 +820,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _unitsRef.orderBy('order').snapshots(),
-        builder: (context, snapshot) {
+        builder: (ctx, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: Column(
@@ -809,7 +828,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text('Loading course content...'),
+                  Text('Loading course content…'),
                 ],
               ),
             );
@@ -846,18 +865,14 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     bottomRight: Radius.circular(20),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    Text(
-                      widget.courseTitle.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                child: Text(
+                  widget.courseTitle.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
 
@@ -869,7 +884,7 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        "Course Units",
+                        'Course Units',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -877,13 +892,11 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
                       Expanded(
                         child: ListView.builder(
                           itemCount: units.length,
-                          itemBuilder: (context, index) {
-                            return _buildUnitItem(units[index], index);
-                          },
+                          itemBuilder: (ctx, index) =>
+                              _buildUnitItem(units[index], index),
                         ),
                       ),
                     ],
@@ -899,11 +912,12 @@ class _CourseOverviewPageState extends State<CourseOverviewPage> {
 
   @override
   void dispose() {
-    // Dispose all YouTube controllers
-    for (var controller in videoControllers.values) {
-      controller.dispose();
+    for (final c in _chewieControllers.values) {
+      c.dispose();
     }
-    videoControllers.clear();
+    for (final c in _vpControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 }

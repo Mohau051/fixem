@@ -114,8 +114,9 @@ class DialogflowService {
 
   // ── Detect Intent ─────────────────────────────────────────────────────────
 
-  /// Sends [userMessage] to Dialogflow ES and returns the fulfilment text.
-  Future<String> detectIntent({
+  /// Sends [userMessage] to Dialogflow ES and returns a map containing
+  /// the fulfilment text and the matched intent name.
+  Future<Map<String, String>> detectIntent({
     required String sessionId,
     required String userMessage,
     String languageCode = 'en',
@@ -157,12 +158,170 @@ class DialogflowService {
     final fulfillmentText =
         queryResult?['fulfillmentText'] as String? ?? '';
 
-    if (fulfillmentText.isEmpty) {
-      return "I'm sorry, I didn't quite catch that. Could you please rephrase your question?";
-    }
+    // Extract the matched intent name (e.g. "career.discovery.start")
+    final intentData = queryResult?['intent'] as Map<String, dynamic>?;
+    final intentName = intentData?['displayName'] as String? ?? '';
 
-    return fulfillmentText;
+    final replyText = fulfillmentText.isEmpty
+        ? "I'm sorry, I didn't quite catch that. Could you please rephrase your question?"
+        : fulfillmentText;
+
+    return {
+      'text': replyText,
+      'intent': intentName,
+    };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Suggestion category system — mapped to real Dialogflow agent intents
+// ---------------------------------------------------------------------------
+
+enum _SuggestionCategory {
+  welcome,
+  careerDiscovery,
+  cvHelp,
+  interview,
+  jobSearch,
+  skills,
+  motivation,
+  education,
+}
+
+class _SuggestionGroup {
+  final String label;
+  final IconData icon;
+  final List<String> questions;
+
+  const _SuggestionGroup({
+    required this.label,
+    required this.icon,
+    required this.questions,
+  });
+}
+
+/// Maps each suggestion category to relevant questions that align with actual
+/// Dialogflow agent intents.
+const Map<_SuggestionCategory, _SuggestionGroup> _suggestionMap = {
+  _SuggestionCategory.welcome: _SuggestionGroup(
+    label: 'Get Started',
+    icon: Icons.explore_rounded,
+    questions: [
+      'Help me discover a career',
+      'How do I write a CV?',
+      'Give me interview tips',
+      'What skills should I learn?',
+      'How do I search for jobs?',
+    ],
+  ),
+  _SuggestionCategory.careerDiscovery: _SuggestionGroup(
+    label: 'Career Discovery',
+    icon: Icons.compass_calibration_rounded,
+    questions: [
+      'Based on my school subjects',
+      'Based on my passions',
+      'Tell me about technology careers',
+      'Tell me about trade careers',
+      'Tell me about business careers',
+      'Tell me about healthcare careers',
+    ],
+  ),
+  _SuggestionCategory.cvHelp: _SuggestionGroup(
+    label: 'CV & Cover Letter',
+    icon: Icons.description_rounded,
+    questions: [
+      'Help me write a personal profile',
+      'How to list skills on my CV',
+      'What if I have no experience?',
+      'How to write a cover letter',
+      'What references should I include?',
+    ],
+  ),
+  _SuggestionCategory.interview: _SuggestionGroup(
+    label: 'Interview Prep',
+    icon: Icons.record_voice_over_rounded,
+    questions: [
+      'Common interview questions',
+      'What should I wear to an interview?',
+      'How to be confident in interviews',
+      'Body language tips',
+      'How to arrive prepared',
+    ],
+  ),
+  _SuggestionCategory.jobSearch: _SuggestionGroup(
+    label: 'Job Search',
+    icon: Icons.work_rounded,
+    questions: [
+      'How do I apply for jobs?',
+      'Help me set up job alerts',
+      'How to avoid job scams',
+      'What documents do I need?',
+    ],
+  ),
+  _SuggestionCategory.skills: _SuggestionGroup(
+    label: 'Skills & Courses',
+    icon: Icons.school_rounded,
+    questions: [
+      'Recommend a course for me',
+      'Digital literacy skills',
+      'Communication skills',
+      'Microsoft Office skills',
+      'Financial literacy skills',
+    ],
+  ),
+  _SuggestionCategory.motivation: _SuggestionGroup(
+    label: 'Motivation',
+    icon: Icons.emoji_emotions_rounded,
+    questions: [
+      'I can\'t find a job',
+      'I feel discouraged',
+      'I have no qualifications',
+      'How can I improve myself?',
+      'Nobody wants to hire me',
+    ],
+  ),
+  _SuggestionCategory.education: _SuggestionGroup(
+    label: 'Education',
+    icon: Icons.menu_book_rounded,
+    questions: [
+      'Tell me about learnerships',
+      'Tell me about TVET colleges',
+      'Online learning options',
+      'Short courses I can take',
+      'What is a SETA?',
+    ],
+  ),
+};
+
+/// Determines the suggestion category based on the Dialogflow intent name.
+_SuggestionCategory _categoryFromIntent(String intentName) {
+  final name = intentName.toLowerCase();
+
+  if (name.startsWith('career.discovery') || name.startsWith('career.sector') ||
+      name.startsWith('career.startpath')) {
+    return _SuggestionCategory.careerDiscovery;
+  }
+  if (name.startsWith('cv.')) {
+    return _SuggestionCategory.cvHelp;
+  }
+  if (name.startsWith('interview.')) {
+    return _SuggestionCategory.interview;
+  }
+  if (name.startsWith('jobsearch.')) {
+    return _SuggestionCategory.jobSearch;
+  }
+  if (name.startsWith('skills.') || name.startsWith('courses.')) {
+    return _SuggestionCategory.skills;
+  }
+  if (name.startsWith('motivation.')) {
+    return _SuggestionCategory.motivation;
+  }
+  if (name.startsWith('education.') || name.startsWith('certificates.')) {
+    return _SuggestionCategory.education;
+  }
+
+  // Default for greetings, smalltalk, faq, fallback, etc.
+  return _SuggestionCategory.welcome;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,17 +341,24 @@ class CareerChatbotPage extends StatefulWidget {
 
 class _CareerChatbotPageState extends State<CareerChatbotPage>
     with TickerProviderStateMixin {
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── Static persistence ────────────────────────────────────────────────────
+  // These survive navigation (pop/push) but reset on app restart.
 
-  final List<ChatMessage> _messages = [];
+  static final List<ChatMessage> _persistedMessages = [];
+  static String? _persistedSessionId;
+  static _SuggestionCategory _persistedCategory = _SuggestionCategory.welcome;
+
+  // ── Instance state ────────────────────────────────────────────────────────
+
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final Uuid _uuid = const Uuid();
   final DialogflowService _dialogflow = DialogflowService();
 
-  late final String _sessionId;
+  late String _sessionId;
   bool _isLoading = false;
   bool _isInitialised = false;
+  _SuggestionCategory _currentCategory = _SuggestionCategory.welcome;
 
   // Animated typing dots
   late AnimationController _dotController;
@@ -203,7 +369,11 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
   @override
   void initState() {
     super.initState();
-    _sessionId = _uuid.v4();
+
+    // Restore persisted session or start a new one
+    _sessionId = _persistedSessionId ?? _uuid.v4();
+    _persistedSessionId = _sessionId;
+    _currentCategory = _persistedCategory;
 
     // Bouncing dots animation
     _dotController = AnimationController(
@@ -228,22 +398,51 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
 
   // ── Initialisation ─────────────────────────────────────────────────────────
 
-  /// Initialises the Dialogflow service and posts the welcome message.
+  /// Initialises the Dialogflow service and posts the welcome message
+  /// (only if this is a fresh session with no persisted messages).
   Future<void> _initChatbot() async {
     try {
       await _dialogflow.init();
       if (!mounted) return;
 
       setState(() => _isInitialised = true);
-      _addBotMessage(
-        'Hello! I am your Fixem Career Assistant. I can help with career '
-        'guidance, job readiness, CV tips, interview advice, and skills '
-        'recommendations. How can I help you today?',
-      );
+
+      // Only show welcome message if there are no persisted messages
+      if (_persistedMessages.isEmpty) {
+        _addBotMessage(
+          'Hello! I am your Fixem Career Assistant. I can help with career '
+          'guidance, job readiness, CV tips, interview advice, and skills '
+          'recommendations. How can I help you today?',
+        );
+      } else {
+        // Scroll to the bottom of existing messages
+        _scrollToBottom();
+      }
     } catch (e) {
       debugPrint('Chatbot init error: $e');
       _showError('Could not initialise chatbot. Please try again later.');
     }
+  }
+
+  // ── Reset / Refresh ────────────────────────────────────────────────────────
+
+  /// Clears the chat, generates a new Dialogflow session, and re-sends
+  /// the welcome greeting. Called only when the user taps the refresh button.
+  void _resetChat() {
+    setState(() {
+      _persistedMessages.clear();
+      _sessionId = _uuid.v4();
+      _persistedSessionId = _sessionId;
+      _currentCategory = _SuggestionCategory.welcome;
+      _persistedCategory = _SuggestionCategory.welcome;
+      _isLoading = false;
+    });
+
+    _addBotMessage(
+      'Hello! I am your Fixem Career Assistant. I can help with career '
+      'guidance, job readiness, CV tips, interview advice, and skills '
+      'recommendations. How can I help you today?',
+    );
   }
 
   // ── Messaging ──────────────────────────────────────────────────────────────
@@ -263,11 +462,24 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
     setState(() => _isLoading = true);
 
     try {
-      final reply = await _dialogflow.detectIntent(
+      final result = await _dialogflow.detectIntent(
         sessionId: _sessionId,
         userMessage: text,
       );
-      _addBotMessage(reply);
+
+      final replyText = result['text'] ?? '';
+      final intentName = result['intent'] ?? '';
+
+      _addBotMessage(replyText);
+
+      // Update suggestions based on detected intent
+      if (intentName.isNotEmpty) {
+        final newCategory = _categoryFromIntent(intentName);
+        setState(() {
+          _currentCategory = newCategory;
+          _persistedCategory = newCategory;
+        });
+      }
     } catch (e) {
       debugPrint('Send message error: $e');
       _addBotMessage(
@@ -282,7 +494,7 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
 
   void _addUserMessage(String text) {
     setState(() {
-      _messages.add(ChatMessage(
+      _persistedMessages.add(ChatMessage(
         text: text,
         isUser: true,
         timestamp: DateTime.now(),
@@ -293,7 +505,7 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
 
   void _addBotMessage(String text) {
     setState(() {
-      _messages.add(ChatMessage(
+      _persistedMessages.add(ChatMessage(
         text: text,
         isUser: false,
         timestamp: DateTime.now(),
@@ -333,16 +545,6 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
     );
   }
 
-  // ── Suggested questions ────────────────────────────────────────────────────
-
-  static const List<String> _suggestions = [
-    'How do I create a CV?',
-    'What jobs can I apply for without experience?',
-    'How do I prepare for an interview?',
-    'What skills should I learn for retail jobs?',
-    'Recommend careers for technology',
-  ];
-
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -356,15 +558,14 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
       body: Column(
         children: [
           Expanded(
-            child: !_isInitialised && _messages.isEmpty
+            child: !_isInitialised && _persistedMessages.isEmpty
                 ? _buildInitLoader()
                 : _buildMessageList(),
           ),
-          // Show suggestions only when conversation is brand new
-          if (_isInitialised && _messages.length <= 1)
-            _buildSuggestions(),
           // Typing indicator
           if (_isLoading) _buildTypingIndicator(),
+          // Context-aware suggestions — always visible
+          if (_isInitialised) _buildSuggestions(),
           // Input bar
           _buildInputBar(),
         ],
@@ -427,6 +628,50 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
           ),
         ],
       ),
+      actions: [
+        // ── Refresh / reset button ──
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+          tooltip: 'Start new conversation',
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: const Row(
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Color(0xFF0D47A1)),
+                    SizedBox(width: 10),
+                    Text('New Conversation'),
+                  ],
+                ),
+                content: const Text(
+                  'This will clear the current chat and start a fresh conversation. Continue?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0D47A1),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _resetChat();
+                    },
+                    child: const Text('Reset Chat'),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 
@@ -487,8 +732,8 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) => _buildBubble(_messages[index]),
+      itemCount: _persistedMessages.length,
+      itemBuilder: (context, index) => _buildBubble(_persistedMessages[index]),
     );
   }
 
@@ -660,54 +905,91 @@ class _CareerChatbotPageState extends State<CareerChatbotPage>
     );
   }
 
-  // ── Suggested questions ────────────────────────────────────────────────────
+  // ── Context-aware suggested questions ──────────────────────────────────────
 
   Widget _buildSuggestions() {
+    final group = _suggestionMap[_currentCategory]!;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FF),
+        border: Border(
+          top: BorderSide(
+            color: const Color(0xFF90CAF9).withValues(alpha: 0.3),
+            width: 1,
+          ),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // Category label with icon
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 6),
-            child: Text(
-              'Suggested questions:',
-              style:
-                  TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Row(
+              children: [
+                Icon(
+                  group.icon,
+                  size: 14,
+                  color: const Color(0xFF1565C0),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  group.label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1565C0),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Tap to ask',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade400,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _suggestions.map((q) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () {
-                      _textController.text = q;
-                      _sendMessage();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE3F2FD),
-                        border: Border.all(
-                            color: const Color(0xFF90CAF9), width: 1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        q,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF1565C0),
-                          fontWeight: FontWeight.w500,
-                        ),
+          // Scrollable suggestion chips
+          SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: group.questions.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final question = group.questions[index];
+                return GestureDetector(
+                  onTap: () {
+                    _textController.text = question;
+                    _sendMessage();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE3F2FD),
+                      border: Border.all(
+                          color: const Color(0xFF90CAF9), width: 1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      question,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF1565C0),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 );
-              }).toList(),
+              },
             ),
           ),
         ],

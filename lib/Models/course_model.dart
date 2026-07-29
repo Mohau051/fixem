@@ -20,12 +20,12 @@ class Unit {
   final String title;
   final String subtitle;
   final String pdfUrl;
-  final String youtubeUrl;
+  final String videoUrl; // Firebase Storage download URL (was youtubeUrl)
 
   Unit({
     required this.title,
     required this.subtitle,
     required this.pdfUrl,
-    required this.youtubeUrl,
+    required this.videoUrl,
   });
 }
